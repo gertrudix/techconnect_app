@@ -7,10 +7,11 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
-from competencias import COMPETENCIAS, get_all_competencias_flat, get_competencia_category
+from competencias import CATEGORIAS, get_competencia_category
 from sheets_backend import (
     get_fase1_data, get_fase2_data, get_fase3_data,
-    get_students, get_empresas, init_spreadsheet, add_empresa
+    get_students, get_empresas, init_spreadsheet, add_empresa,
+    get_competencias, get_competencias_flat, add_competencia, delete_competencia
 )
 
 
@@ -61,7 +62,6 @@ def render_progress_tab():
 
     st.divider()
 
-    # Progress by group
     if students:
         df_students = pd.DataFrame(students)
         if "grupo" in df_students.columns:
@@ -87,7 +87,6 @@ def render_progress_tab():
             df_groups = pd.DataFrame(group_data)
             st.dataframe(df_groups, use_container_width=True, hide_index=True)
 
-    # Empresas más visitadas (Fase 2)
     if not df_f2.empty and "empresa_nombre" in df_f2.columns:
         st.subheader("Empresas más visitadas durante el evento")
         empresa_counts = df_f2["empresa_nombre"].value_counts().head(10)
@@ -107,9 +106,8 @@ def render_competencias_tab():
 
     st.subheader("Competencias más seleccionadas")
 
-    all_comps = get_all_competencias_flat()
+    all_comps = get_competencias_flat()
 
-    # Fase 1 competencias
     if not df_f1.empty and "competencia_codigo" in df_f1.columns:
         st.markdown("**Fase 1 — Hipótesis pre-evento**")
         comp_counts_f1 = df_f1["competencia_codigo"].value_counts()
@@ -134,7 +132,6 @@ def render_competencias_tab():
 
     st.divider()
 
-    # Fase 3 - cambios
     if not df_f3.empty and "cambio_vs_v1" in df_f3.columns:
         st.markdown("**Fase 3 — Cambios tras el evento**")
         df_changes = df_f3[df_f3["cambio_vs_v1"] != ""]
@@ -151,7 +148,6 @@ def render_competencias_tab():
     else:
         st.info("Aún no hay datos de Fase 3.")
 
-    # Gap universidad-empresa (from Fase 2)
     df_f2 = get_fase2_data()
     if not df_f2.empty and "gap_universidad" in df_f2.columns:
         st.divider()
@@ -199,12 +195,12 @@ def render_datos_tab():
 
 
 def render_config_tab():
-    """Configuration: manage empresas and initialize sheets."""
+    """Configuration: manage empresas, competencias and initialize sheets."""
     st.subheader("Configuración")
 
     # Init sheets
     st.markdown("**Inicializar hojas de cálculo**")
-    st.caption("Ejecuta esto una sola vez al configurar el proyecto.")
+    st.caption("Ejecuta esto una sola vez al configurar el proyecto. Si ya tienes la hoja de Competencias, no se sobrescribirá.")
     if st.button("Inicializar Google Sheets", type="primary"):
         try:
             init_spreadsheet()
@@ -214,7 +210,77 @@ def render_config_tab():
 
     st.divider()
 
-    # Manage empresas
+    # ---- COMPETENCIAS MANAGEMENT ----
+    st.markdown("**Gestionar competencias del Grado**")
+    st.caption("Las competencias se leen de Google Sheets. Puedes añadir, ver y eliminar desde aquí.")
+
+    competencias = get_competencias()
+    if competencias:
+        df_comp = pd.DataFrame(competencias)
+        # Add category label for display
+        df_comp["tipo"] = df_comp["categoria"].map(lambda c: CATEGORIAS.get(c, {}).get("label", c))
+        st.dataframe(
+            df_comp[["codigo", "tipo", "descripcion"]].rename(columns={
+                "codigo": "Código",
+                "tipo": "Categoría",
+                "descripcion": "Descripción",
+            }),
+            use_container_width=True,
+            hide_index=True,
+        )
+        st.caption(f"Total: {len(competencias)} competencias")
+
+    # Add new competencia
+    with st.form("add_competencia", clear_on_submit=True):
+        st.markdown("**Añadir nueva competencia**")
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            new_code = st.text_input("Código (ej: COM9, HAB30...)")
+            new_cat = st.selectbox(
+                "Categoría",
+                options=list(CATEGORIAS.keys()),
+                format_func=lambda x: CATEGORIAS[x]["label"],
+            )
+        with col2:
+            new_desc = st.text_area("Descripción de la competencia", height=80)
+
+        if st.form_submit_button("Añadir competencia"):
+            if new_code and new_desc:
+                # Check if code already exists
+                existing_codes = [c["codigo"] for c in competencias] if competencias else []
+                if new_code.upper() in existing_codes:
+                    st.warning(f"El código {new_code.upper()} ya existe.")
+                else:
+                    try:
+                        add_competencia(new_code.upper(), new_cat, new_desc)
+                        st.success(f"Competencia {new_code.upper()} añadida.")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+            else:
+                st.warning("Introduce el código y la descripción.")
+
+    # Delete competencia
+    if competencias:
+        with st.expander("Eliminar una competencia"):
+            codes = [c["codigo"] for c in competencias]
+            flat = get_competencias_flat()
+            del_code = st.selectbox(
+                "Selecciona la competencia a eliminar:",
+                codes,
+                format_func=lambda x: f"{x} — {flat.get(x, '')[:50]}..."
+            )
+            if st.button("Eliminar", type="secondary"):
+                try:
+                    delete_competencia(del_code)
+                    st.success(f"Competencia {del_code} eliminada.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error: {e}")
+
+    st.divider()
+
+    # ---- EMPRESAS MANAGEMENT ----
     st.markdown("**Gestionar empresas del Tech Connect**")
 
     empresas = get_empresas()

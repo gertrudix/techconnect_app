@@ -12,6 +12,7 @@ from gspread.exceptions import APIError, WorksheetNotFound
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pandas as pd
+from competencias import DEFAULT_COMPETENCIAS, CATEGORIAS
 
 
 # Sheet names
@@ -20,6 +21,7 @@ SHEET_FASE1 = "Fase1_PreEvento"
 SHEET_FASE2 = "Fase2_DuranteEvento"
 SHEET_FASE3 = "Fase3_PostEvento"
 SHEET_EMPRESAS = "Empresas"
+SHEET_COMPETENCIAS = "Competencias"
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -111,6 +113,14 @@ def init_spreadsheet():
     ss = get_spreadsheet()
     existing = [ws.title for ws in ss.worksheets()]
 
+    # Competencias sheet
+    if SHEET_COMPETENCIAS not in existing:
+        ws = ss.add_worksheet(title=SHEET_COMPETENCIAS, rows=100, cols=3)
+        ws.append_row(["codigo", "categoria", "descripcion"])
+        rows = [[c[0], c[1], c[2]] for c in DEFAULT_COMPETENCIAS]
+        if rows:
+            ws.append_rows(rows)
+
     if SHEET_EMPRESAS not in existing:
         ws = ss.add_worksheet(title=SHEET_EMPRESAS, rows=50, cols=5)
         ws.append_row(["id", "nombre", "sector", "web", "descripcion"])
@@ -148,7 +158,74 @@ def init_spreadsheet():
             "posicionamiento_personal", "plan_accion", "valoracion_experiencia",
         ])
 
+    # Clear caches after init
+    get_competencias.clear()
+    get_empresas.clear()
     return True
+
+
+# ============================================
+# COMPETENCIAS (from Google Sheets)
+# ============================================
+
+@st.cache_data(ttl=30)
+def get_competencias():
+    """
+    Get competencias from Google Sheets.
+    Returns a list of dicts: [{"codigo": "COM2", "categoria": "COM", "descripcion": "..."}]
+    """
+    ss = get_spreadsheet()
+    try:
+        ws = ss.worksheet(SHEET_COMPETENCIAS)
+        records = safe_read(ws)
+        return records
+    except (WorksheetNotFound, APIError):
+        # Fallback to defaults if sheet doesn't exist yet
+        return [{"codigo": c[0], "categoria": c[1], "descripcion": c[2]} for c in DEFAULT_COMPETENCIAS]
+
+
+def get_competencias_flat():
+    """Returns a flat dict of code -> description."""
+    comps = get_competencias()
+    return {c["codigo"]: c["descripcion"] for c in comps}
+
+
+def get_competencias_by_category():
+    """Returns competencias organized by category with labels."""
+    comps = get_competencias()
+    result = {}
+    for cat_key, cat_info in CATEGORIAS.items():
+        items = {c["codigo"]: c["descripcion"] for c in comps if c["categoria"] == cat_key}
+        if items:
+            result[cat_key] = {
+                "label": cat_info["label"],
+                "color": cat_info["color"],
+                "items": items,
+            }
+    return result
+
+
+def add_competencia(codigo, categoria, descripcion):
+    """Add a new competencia to the sheet."""
+    ss = get_spreadsheet()
+    ws = ss.worksheet(SHEET_COMPETENCIAS)
+    safe_append_row(ws, [codigo, categoria, descripcion])
+    get_competencias.clear()
+
+
+def delete_competencia(codigo):
+    """Delete a competencia by code."""
+    ss = get_spreadsheet()
+    ws = ss.worksheet(SHEET_COMPETENCIAS)
+    try:
+        cell = ws.find(codigo, in_column=1)
+        if cell:
+            ws.delete_rows(cell.row)
+            get_competencias.clear()
+            return True
+    except (APIError, Exception):
+        pass
+    return False
 
 
 # ============================================
@@ -177,7 +254,6 @@ def add_empresa(empresa_data):
         empresa_data.get("web", ""),
         empresa_data.get("descripcion", ""),
     ])
-    # Clear empresas cache so new empresa shows immediately
     get_empresas.clear()
 
 
@@ -228,7 +304,6 @@ def save_fase1(estudiante, grupo, empresa_id, empresa_nombre, analisis, competen
 
     if rows:
         safe_append_rows(ws, rows)
-    # Clear read cache
     get_fase1_data.clear()
     return True
 

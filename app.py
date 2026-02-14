@@ -7,12 +7,13 @@ App de networking profesional y análisis de competencias.
 
 import streamlit as st
 from competencias import (
-    COMPETENCIAS, NIVELES, CANALES_DIGITALES,
-    get_all_competencias_flat, get_competencia_type
+    CATEGORIAS, NIVELES, CANALES_DIGITALES,
+    get_competencia_type
 )
 from sheets_backend import (
     register_student, get_empresas, save_fase1, save_fase2,
-    save_fase3_competencias, save_fase3_reflexion, get_fase1_data
+    save_fase3_competencias, save_fase3_reflexion, get_fase1_data,
+    get_competencias_flat, get_competencias_by_category
 )
 from dashboard import render_dashboard
 
@@ -260,10 +261,10 @@ def render_fase1():
             "Selecciona las competencias del Grado que consideras más relevantes para trabajar en esta empresa."
         )
 
-        all_comps = get_all_competencias_flat()
+        all_comps = get_competencias_flat()
 
         with st.expander("Ver catálogo completo de competencias"):
-            for cat_key, cat in COMPETENCIAS.items():
+            for cat_key, cat in get_competencias_by_category().items():
                 st.markdown(f"**{cat['label']}**")
                 for code, desc in cat["items"].items():
                     st.markdown(f"- `{code}` — {desc}")
@@ -480,7 +481,7 @@ def render_fase3():
                 ]
                 if not v1_data.empty and "competencia_codigo" in v1_data.columns:
                     st.markdown("**Tu análisis v1 (pre-evento):**")
-                    all_comps = get_all_competencias_flat()
+                    all_comps = get_competencias_flat()
                     for _, row in v1_data.iterrows():
                         code = row.get("competencia_codigo", "")
                         nivel = row.get("competencia_nivel", "")
@@ -490,7 +491,7 @@ def render_fase3():
 
             st.markdown("**Actualiza tu mapeo de competencias con lo que aprendiste:**")
 
-            all_comps = get_all_competencias_flat()
+            all_comps = get_competencias_flat()
             CAMBIOS = ["Nueva (no estaba en v1)", "Confirmada", "Eliminada", "Nivel ajustado"]
 
             with st.form(f"fase3_comp_{empresa}"):
