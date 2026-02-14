@@ -36,7 +36,7 @@ def get_gspread_client():
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     return gspread.authorize(creds)
 
-
+@st.cache_resource(ttl=60)
 def get_spreadsheet():
     """Get the main spreadsheet."""
     client = get_gspread_client()
