@@ -1,5 +1,5 @@
 """
-Dashboard de profesor para TechConnect Skills Map.
+Dashboard de Docente para TechConnect Skills Map.
 """
 
 import streamlit as st
@@ -15,7 +15,7 @@ from sheets_backend import (
 
 
 def render_dashboard():
-    st.title("Dashboard del Profesor")
+    st.title("Dashboard del Docente")
     st.caption("Tech Connect 2026 — Skills Map — Panel de seguimiento")
 
     tab_progreso, tab_competencias, tab_datos, tab_config = st.tabs([
