@@ -111,7 +111,7 @@ def get_empresas():
         ws = ss.worksheet(SHEET_EMPRESAS)
         records = ws.get_all_records()
         return records
-    except gspread.exceptions.WorksheetNotFound:
+    except (WorksheetNotFound, APIError):
         return []
 
 
@@ -143,7 +143,7 @@ def get_students():
     try:
         ws = ss.worksheet(SHEET_ESTUDIANTES)
         return ws.get_all_records()
-    except gspread.exceptions.WorksheetNotFound:
+    except (WorksheetNotFound, APIError):
         return []
 
 
@@ -183,7 +183,7 @@ def get_fase1_data():
         ws = ss.worksheet(SHEET_FASE1)
         records = ws.get_all_records()
         return pd.DataFrame(records)
-    except gspread.exceptions.WorksheetNotFound:
+    except (WorksheetNotFound, APIError):
         return pd.DataFrame()
 
 
@@ -221,7 +221,7 @@ def get_fase2_data():
         ws = ss.worksheet(SHEET_FASE2)
         records = ws.get_all_records()
         return pd.DataFrame(records)
-    except gspread.exceptions.WorksheetNotFound:
+    except (WorksheetNotFound, APIError):
         return pd.DataFrame()
 
 
@@ -276,5 +276,5 @@ def get_fase3_data():
         ws = ss.worksheet(SHEET_FASE3)
         records = ws.get_all_records()
         return pd.DataFrame(records)
-    except gspread.exceptions.WorksheetNotFound:
+    except (WorksheetNotFound, APIError):
         return pd.DataFrame()
