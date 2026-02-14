@@ -221,7 +221,7 @@ def render_config_tab():
     if empresas:
         st.dataframe(pd.DataFrame(empresas), use_container_width=True, hide_index=True)
 
-    with st.form("add_empresa"):
+  with st.form("add_empresa", clear_on_submit=True):
         st.markdown("**Añadir nueva empresa**")
         col1, col2 = st.columns(2)
         with col1:
