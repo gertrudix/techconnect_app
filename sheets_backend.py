@@ -6,6 +6,7 @@ Handles all read/write operations with Google Sheets.
 import json
 import streamlit as st
 import gspread
+from gspread.exceptions import APIError, WorksheetNotFound
 from google.oauth2.service_account import Credentials
 from datetime import datetime
 import pandas as pd
@@ -257,7 +258,7 @@ def save_fase3_reflexion(estudiante, grupo, reflexion):
     ts = datetime.now().isoformat()
 
     ws.append_row([
-        ts, estudiante, grupo, "REFLEXIÓN_GENERAL",
+        ts, estudiante, grupo, "REFLEXION_GENERAL",
         "", "", "", "", "",
         reflexion.get("competencias_mas_demandadas", ""),
         reflexion.get("competencias_sorpresa", ""),

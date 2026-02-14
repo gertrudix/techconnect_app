@@ -17,26 +17,22 @@ from sheets_backend import (
 def render_dashboard():
     """Main dashboard view for professors."""
 
-    st.title("📊 Dashboard del Profesor")
-    st.caption("TechConnect Skills Map — Panel de seguimiento")
+    st.title("Dashboard del Profesor")
+    st.caption("Tech Connect 2026 — Skills Map — Panel de seguimiento")
 
     tab_progreso, tab_competencias, tab_datos, tab_config = st.tabs([
-        "📈 Progreso", "🎯 Análisis de Competencias", "📋 Datos brutos", "⚙️ Configuración"
+        "Progreso", "Análisis de Competencias", "Datos brutos", "Configuración"
     ])
 
-    # ---- TAB PROGRESO ----
     with tab_progreso:
         render_progress_tab()
 
-    # ---- TAB COMPETENCIAS ----
     with tab_competencias:
         render_competencias_tab()
 
-    # ---- TAB DATOS ----
     with tab_datos:
         render_datos_tab()
 
-    # ---- TAB CONFIG ----
     with tab_config:
         render_config_tab()
 
@@ -55,13 +51,13 @@ def render_progress_tab():
         st.metric("Estudiantes registrados", total_students)
     with col2:
         f1_count = df_f1["estudiante"].nunique() if not df_f1.empty else 0
-        st.metric("Han completado Fase 1", f1_count)
+        st.metric("Fase 1 completada", f1_count)
     with col3:
         f2_count = df_f2["estudiante"].nunique() if not df_f2.empty else 0
-        st.metric("Han completado Fase 2", f2_count)
+        st.metric("Fase 2 completada", f2_count)
     with col4:
         f3_count = df_f3["estudiante"].nunique() if not df_f3.empty else 0
-        st.metric("Han completado Fase 3", f3_count)
+        st.metric("Fase 3 completada", f3_count)
 
     st.divider()
 
@@ -97,8 +93,8 @@ def render_progress_tab():
         empresa_counts = df_f2["empresa_nombre"].value_counts().head(10)
         fig = px.bar(
             x=empresa_counts.values, y=empresa_counts.index,
-            orientation="h", color_discrete_sequence=["#1A5276"],
-            labels={"x": "Nº de conversaciones", "y": "Empresa"},
+            orientation="h", color_discrete_sequence=["#1a1a2e"],
+            labels={"x": "N.º de conversaciones", "y": "Empresa"},
         )
         fig.update_layout(yaxis=dict(autorange="reversed"), height=400)
         st.plotly_chart(fig, use_container_width=True)
@@ -118,7 +114,6 @@ def render_competencias_tab():
         st.markdown("**Fase 1 — Hipótesis pre-evento**")
         comp_counts_f1 = df_f1["competencia_codigo"].value_counts()
 
-        # Map to descriptions
         comp_df = pd.DataFrame({
             "Código": comp_counts_f1.index,
             "Menciones": comp_counts_f1.values,
@@ -129,7 +124,7 @@ def render_competencias_tab():
         fig = px.bar(
             comp_df.head(15), x="Menciones", y="Código",
             color="Categoría", orientation="h",
-            color_discrete_map={"COM": "#3498DB", "CON": "#27AE60", "HAB": "#E67E22"},
+            color_discrete_map={"COM": "#6C63FF", "CON": "#2ECC71", "HAB": "#E67E22"},
             hover_data=["Descripción"],
         )
         fig.update_layout(yaxis=dict(autorange="reversed"), height=500)
@@ -147,7 +142,7 @@ def render_competencias_tab():
             change_counts = df_changes["cambio_vs_v1"].value_counts()
             fig = px.pie(
                 values=change_counts.values, names=change_counts.index,
-                color_discrete_sequence=["#27AE60", "#3498DB", "#E74C3C", "#F39C12"],
+                color_discrete_sequence=["#2ECC71", "#6C63FF", "#E74C3C", "#F39C12"],
                 title="Distribución de cambios v1 → v2",
             )
             st.plotly_chart(fig, use_container_width=True)
@@ -160,7 +155,7 @@ def render_competencias_tab():
     df_f2 = get_fase2_data()
     if not df_f2.empty and "gap_universidad" in df_f2.columns:
         st.divider()
-        st.subheader("💬 Lo que las empresas echan en falta (respuestas textuales)")
+        st.subheader("Lo que las empresas echan en falta (respuestas textuales)")
         gaps = df_f2[df_f2["gap_universidad"] != ""]["gap_universidad"].tolist()
         if gaps:
             for i, gap in enumerate(gaps[:20]):
@@ -195,7 +190,7 @@ def render_datos_tab():
         st.dataframe(df, use_container_width=True, hide_index=True)
         csv = df.to_csv(index=False).encode("utf-8")
         st.download_button(
-            f"📥 Descargar CSV — {option}",
+            f"Descargar CSV — {option}",
             csv, f"techconnect_{option.lower().replace(' ', '_')}.csv",
             "text/csv"
         )
@@ -205,12 +200,12 @@ def render_datos_tab():
 
 def render_config_tab():
     """Configuration: manage empresas and initialize sheets."""
-    st.subheader("⚙️ Configuración")
+    st.subheader("Configuración")
 
     # Init sheets
     st.markdown("**Inicializar hojas de cálculo**")
     st.caption("Ejecuta esto una sola vez al configurar el proyecto.")
-    if st.button("🔧 Inicializar Google Sheets", type="primary"):
+    if st.button("Inicializar Google Sheets", type="primary"):
         try:
             init_spreadsheet()
             st.success("Hojas inicializadas correctamente.")
@@ -220,7 +215,7 @@ def render_config_tab():
     st.divider()
 
     # Manage empresas
-    st.markdown("**Gestionar empresas del TechConnect**")
+    st.markdown("**Gestionar empresas del Tech Connect**")
 
     empresas = get_empresas()
     if empresas:
@@ -236,7 +231,7 @@ def render_config_tab():
             emp_web = st.text_input("Web")
             emp_desc = st.text_area("Descripción breve", height=80)
 
-        if st.form_submit_button("➕ Añadir empresa"):
+        if st.form_submit_button("Añadir empresa"):
             if emp_nombre:
                 emp_id = emp_nombre.lower().replace(" ", "_")[:20]
                 add_empresa({
