@@ -150,7 +150,7 @@ def render_login():
                     st.warning("Introduce usuario y contraseña.")
 
     with col2:
-        st.markdown("### Acceso profesor")
+        st.markdown("### Acceso Docente")
         with st.form("teacher_login"):
             password = st.text_input("Contraseña", type="password")
             submitted = st.form_submit_button("Acceder al dashboard", use_container_width=True)
@@ -206,7 +206,7 @@ def render_fase1():
     empresa_options = [e["nombre"] for e in empresas] if empresas else []
 
     if not empresa_options:
-        st.warning("Aún no hay empresas cargadas. El profesor debe añadirlas desde el panel de configuración.")
+        st.warning("Aún no hay empresas cargadas. El Docente debe añadirlas desde el panel de configuración.")
         empresa_nombre = st.text_input("Introduce el nombre de la empresa manualmente:")
         empresa_id = empresa_nombre.lower().replace(" ", "_")[:20] if empresa_nombre else ""
     else:
@@ -551,7 +551,7 @@ def main():
     if st.session_state.user_type == "teacher":
         with st.sidebar:
             st.markdown(logo_html(width=160, center=False, margin_bottom="0.5rem"), unsafe_allow_html=True)
-            st.markdown("**Modo profesor**")
+            st.markdown("**Modo Docente**")
             if st.button("Cerrar sesión", use_container_width=True):
                 st.session_state.user_type = None
                 st.rerun()
