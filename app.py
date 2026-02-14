@@ -1,8 +1,6 @@
 """
 Tech Connect 2026 — Skills Map
 DIGICOM Lab · Grado en Comunicación Digital · Universidad Rey Juan Carlos
-
-App de networking profesional y análisis de competencias.
 """
 
 import streamlit as st
@@ -11,12 +9,16 @@ from competencias import (
     get_competencia_type
 )
 from sheets_backend import (
-    register_student, get_empresas, save_fase1, save_fase2,
+    authenticate_student, get_empresas, save_fase1, save_fase2,
     save_fase3_competencias, save_fase3_reflexion, get_fase1_data,
     get_competencias_flat, get_competencias_by_category
 )
 from dashboard import render_dashboard
 
+# Logos
+LOGO_URJC = "https://comunicaciondigital.es/wp-content/uploads/2025/07/logo-urjc.png"
+LOGO_DIGICOM = "https://comunicaciondigital.es/wp-content/uploads/2025/07/logo-DIGICOM-Lab-positivo-H.png"
+LOGO_DIGICOM_NEG = "https://comunicaciondigital.es/wp-content/uploads/2025/07/logo-DIGICOM-Lab-negativo-stl.png"
 
 # ============================================
 # PAGE CONFIG
@@ -28,80 +30,52 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# Custom CSS aligned with Tech Connect 2026 brand
 st.markdown("""
 <style>
-    /* Import font similar to the TC2026 site */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
-    /* Global */
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; max-width: 900px; }
+    .block-container { padding-top: 1.5rem; padding-bottom: 2rem; max-width: 900px; }
     html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     .stTextArea textarea, .stTextInput input, .stSelectbox select { font-size: 16px !important; }
-
-    /* Headers */
     h1 { color: #1a1a2e !important; font-weight: 700 !important; letter-spacing: -0.02em !important; }
     h2 { color: #1a1a2e !important; font-weight: 600 !important; }
     h3 { color: #2c2c54 !important; font-weight: 600 !important; }
 
-    /* Phase tags */
     .phase-tag {
-        display: inline-block;
-        padding: 4px 14px;
-        border-radius: 4px;
-        font-size: 12px;
-        font-weight: 600;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        margin-bottom: 8px;
+        display: inline-block; padding: 4px 14px; border-radius: 4px;
+        font-size: 12px; font-weight: 600; letter-spacing: 0.08em;
+        text-transform: uppercase; margin-bottom: 8px;
     }
-    .phase-pre { background: #1a1a2e; color: #ffffff; }
-    .phase-live { background: #e74c3c; color: #ffffff; }
-    .phase-post { background: #2c2c54; color: #ffffff; }
+    .phase-pre { background: #1a1a2e; color: #fff; }
+    .phase-live { background: #e74c3c; color: #fff; }
+    .phase-post { background: #2c2c54; color: #fff; }
 
-    /* Info cards */
     .tc-card {
-        background: #f8f9fa;
-        border: 1px solid #e9ecef;
-        border-radius: 8px;
-        padding: 1.25rem;
-        margin: 0.75rem 0;
-    }
-    .tc-card-dark {
-        background: #1a1a2e;
-        color: #ffffff;
-        border-radius: 8px;
-        padding: 1.25rem;
-        margin: 0.75rem 0;
-    }
-    .tc-card-dark a { color: #a29bfe; }
-    .tc-accent {
-        border-left: 3px solid #1a1a2e;
-        padding-left: 1rem;
-        margin: 1rem 0;
-        color: #495057;
+        background: #f8f9fa; border: 1px solid #e9ecef;
+        border-radius: 8px; padding: 1.25rem; margin: 0.75rem 0;
     }
 
-    /* Sidebar */
-    [data-testid="stSidebar"] {
-        background: #1a1a2e;
-    }
-    [data-testid="stSidebar"] * {
-        color: #ffffff !important;
-    }
+    /* Sidebar dark */
+    [data-testid="stSidebar"] { background: #1a1a2e; }
+    [data-testid="stSidebar"] * { color: #ffffff !important; }
     [data-testid="stSidebar"] .stButton button {
-        background: transparent;
-        border: 1px solid rgba(255,255,255,0.2);
-        color: #ffffff;
-        width: 100%;
-        text-align: left;
+        background: transparent; border: 1px solid rgba(255,255,255,0.2);
+        color: #fff; width: 100%; text-align: left;
     }
     [data-testid="stSidebar"] .stButton button:hover {
-        background: rgba(255,255,255,0.1);
-        border-color: rgba(255,255,255,0.4);
+        background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.4);
     }
+    [data-testid="stSidebar"] img { margin-bottom: 0.5rem; }
 
-    /* Hide Streamlit branding */
+    /* Login header */
+    .login-header {
+        background: #1a1a2e; color: #fff; padding: 2.5rem 2rem 2rem;
+        border-radius: 0 0 16px 16px; text-align: center; margin: -1.5rem -1rem 2rem;
+    }
+    .login-header h1 { color: #fff !important; margin: 0.5rem 0 0.25rem; font-size: 2rem; }
+    .login-header p { color: rgba(255,255,255,0.7); font-size: 0.95rem; }
+    .login-logos { display: flex; justify-content: center; align-items: center; gap: 2rem; margin-bottom: 1rem; }
+    .login-logos img { height: 40px; }
+
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 </style>
@@ -113,6 +87,8 @@ st.markdown("""
 # ============================================
 if "user_type" not in st.session_state:
     st.session_state.user_type = None
+if "student_user" not in st.session_state:
+    st.session_state.student_user = ""
 if "student_name" not in st.session_state:
     st.session_state.student_name = ""
 if "student_group" not in st.session_state:
@@ -125,37 +101,38 @@ if "current_phase" not in st.session_state:
 # LOGIN
 # ============================================
 def render_login():
-    """Login screen."""
-    st.markdown("""
-    <div style="text-align:center; padding: 2rem 0 1rem;">
-        <div style="font-size: 13px; font-weight: 600; letter-spacing: 0.1em; color: #888; text-transform: uppercase; margin-bottom: 0.5rem;">DIGICOM Lab · URJC</div>
-        <h1 style="font-size: 2.2rem; margin-bottom: 0.25rem;">TECH CONNECT 2026</h1>
-        <p style="color: #666; font-size: 1.05rem;">Skills Map — Networking profesional y análisis de competencias</p>
+    st.markdown(f"""
+    <div class="login-header">
+        <div class="login-logos">
+            <img src="{LOGO_URJC}" alt="URJC">
+            <img src="{LOGO_DIGICOM_NEG}" alt="DIGICOM Lab">
+        </div>
+        <h1>TECH CONNECT 2026</h1>
+        <p>Skills Map — Networking profesional y análisis de competencias</p>
     </div>
     """, unsafe_allow_html=True)
-
-    st.divider()
 
     col1, col2 = st.columns(2)
 
     with col1:
         st.markdown("### Acceso estudiante")
         with st.form("student_login"):
-            name = st.text_input("Nombre completo")
-            group = st.text_input("Grupo (ej: G1, G2...)")
+            usuario = st.text_input("Usuario")
+            password = st.text_input("Contraseña", type="password")
             submitted = st.form_submit_button("Entrar", type="primary", use_container_width=True)
             if submitted:
-                if name and group:
-                    st.session_state.user_type = "student"
-                    st.session_state.student_name = name.strip()
-                    st.session_state.student_group = group.strip().upper()
-                    try:
-                        register_student(name.strip(), group.strip().upper())
-                    except Exception:
-                        pass
-                    st.rerun()
+                if usuario and password:
+                    user_data = authenticate_student(usuario, password)
+                    if user_data:
+                        st.session_state.user_type = "student"
+                        st.session_state.student_user = user_data["usuario"]
+                        st.session_state.student_name = user_data["nombre"]
+                        st.session_state.student_group = user_data["grupo"]
+                        st.rerun()
+                    else:
+                        st.error("Usuario o contraseña incorrectos.")
                 else:
-                    st.warning("Introduce tu nombre y grupo.")
+                    st.warning("Introduce usuario y contraseña.")
 
     with col2:
         st.markdown("### Acceso profesor")
@@ -175,10 +152,10 @@ def render_login():
 # STUDENT NAVIGATION
 # ============================================
 def render_student_nav():
-    """Sidebar navigation for students."""
     with st.sidebar:
+        st.image(LOGO_DIGICOM_NEG, width=180)
         st.markdown(f"**{st.session_state.student_name}**")
-        st.caption(f"Grupo {st.session_state.student_group}")
+        st.caption(f"@{st.session_state.student_user} · Grupo {st.session_state.student_group}")
         st.divider()
 
         if st.button("Fase 1 · Pre-evento", use_container_width=True):
@@ -193,33 +170,28 @@ def render_student_nav():
 
         st.divider()
         if st.button("Cerrar sesión", use_container_width=True):
-            st.session_state.user_type = None
-            st.session_state.current_phase = None
+            for key in ["user_type", "student_user", "student_name", "student_group", "current_phase"]:
+                st.session_state[key] = None
             st.rerun()
 
 
 # ============================================
-# FASE 1: PRE-EVENTO
+# FASE 1
 # ============================================
 def render_fase1():
-    """Fase 1: Pre-event company analysis and competencia mapping."""
     st.markdown('<span class="phase-tag phase-pre">Fase 1 · Pre-evento</span>', unsafe_allow_html=True)
     st.title("Análisis de empresas y mapeo de competencias")
     st.markdown(
         "Investiga las empresas que asistirán al Tech Connect. Comprende a qué se dedican, "
         "qué presencia digital tienen y qué competencias del Grado serían relevantes para trabajar con ellas."
     )
-
     st.divider()
 
-    # Company selection
     empresas = get_empresas()
     empresa_options = [e["nombre"] for e in empresas] if empresas else []
 
     if not empresa_options:
-        st.warning(
-            "Aún no hay empresas cargadas. El profesor debe añadirlas desde el panel de configuración."
-        )
+        st.warning("Aún no hay empresas cargadas. El profesor debe añadirlas desde el panel de configuración.")
         empresa_nombre = st.text_input("Introduce el nombre de la empresa manualmente:")
         empresa_id = empresa_nombre.lower().replace(" ", "_")[:20] if empresa_nombre else ""
     else:
@@ -232,34 +204,21 @@ def render_fase1():
     st.subheader(f"Análisis de: {empresa_nombre}")
 
     with st.form(f"fase1_{empresa_id}"):
-
         st.markdown("**Actividad principal**")
-        actividad = st.text_area(
-            "Describe su actividad principal, productos/servicios y propuesta de valor:",
-            height=120, placeholder="Investiga en su web, LinkedIn, noticias..."
-        )
+        actividad = st.text_area("Describe su actividad, productos/servicios y propuesta de valor:",
+                                 height=120, placeholder="Investiga en su web, LinkedIn, noticias...")
 
         st.markdown("**Presencia digital**")
         canales = st.multiselect("Canales donde tiene presencia activa:", CANALES_DIGITALES)
-        presencia_notas = st.text_area(
-            "Observaciones sobre su presencia digital (calidad, frecuencia, estrategia):",
-            height=80
-        )
+        presencia_notas = st.text_area("Observaciones sobre su presencia digital:", height=80)
 
         st.markdown("**Perfiles profesionales que podrían necesitar**")
-        perfiles = st.text_area(
-            "Basándote en ofertas de empleo, estructura del equipo, proyectos actuales:",
-            height=100,
-            placeholder="Ej: Community manager, analista de datos, diseñador UX..."
-        )
+        perfiles = st.text_area("Basándote en ofertas, estructura del equipo, proyectos:", height=100,
+                                placeholder="Ej: Community manager, analista de datos...")
 
         st.divider()
-
-        # Competencias mapping
         st.markdown("### Mapeo de competencias v1 (tu hipótesis)")
-        st.markdown(
-            "Selecciona las competencias del Grado que consideras más relevantes para trabajar en esta empresa."
-        )
+        st.markdown("Selecciona las competencias del Grado más relevantes para trabajar en esta empresa.")
 
         all_comps = get_competencias_flat()
 
@@ -280,25 +239,19 @@ def render_fase1():
             st.markdown(f"**{comp_code}**: {all_comps[comp_code]}")
             col1, col2 = st.columns([3, 1])
             with col1:
-                justif = st.text_input(
-                    f"¿Por qué es relevante para {empresa_nombre}?",
-                    key=f"just_{empresa_id}_{comp_code}"
-                )
+                justif = st.text_input(f"¿Por qué es relevante para {empresa_nombre}?",
+                                       key=f"just_{empresa_id}_{comp_code}")
             with col2:
                 nivel = st.selectbox("Nivel necesario", NIVELES, key=f"nivel_{empresa_id}_{comp_code}")
-
             comp_details.append({
-                "codigo": comp_code,
-                "tipo": get_competencia_type(comp_code),
-                "justificacion": justif,
-                "nivel": nivel,
+                "codigo": comp_code, "tipo": get_competencia_type(comp_code),
+                "justificacion": justif, "nivel": nivel,
             })
 
         submitted = st.form_submit_button("Guardar análisis", type="primary", use_container_width=True)
-
         if submitted:
             if not actividad:
-                st.warning("Describe al menos la actividad principal de la empresa.")
+                st.warning("Describe al menos la actividad principal.")
             elif not selected_comps:
                 st.warning("Selecciona al menos una competencia.")
             else:
@@ -308,38 +261,31 @@ def render_fase1():
                     "perfiles_necesitan": perfiles,
                 }
                 try:
-                    save_fase1(
-                        st.session_state.student_name,
-                        st.session_state.student_group,
-                        empresa_id, empresa_nombre,
-                        analisis, comp_details
-                    )
+                    save_fase1(st.session_state.student_user, st.session_state.student_name,
+                               st.session_state.student_group, empresa_id, empresa_nombre,
+                               analisis, comp_details)
                     st.success(f"Análisis de {empresa_nombre} guardado correctamente.")
                 except Exception as e:
                     st.error(f"Error al guardar: {e}")
 
 
 # ============================================
-# FASE 2: DURANTE EL EVENTO
+# FASE 2
 # ============================================
 def render_fase2():
-    """Fase 2: During-event networking guide and data capture."""
     st.markdown('<span class="phase-tag phase-live">Fase 2 · Durante el evento</span>', unsafe_allow_html=True)
     st.title("Registro durante el evento")
 
-    # Elevator pitch
     with st.expander("Tu elevator pitch — recuerda la estructura", expanded=False):
         st.markdown("""
         **Estructura sugerida (30 segundos):**
-
         > «Hola, soy **[tu nombre]**. Estudio Comunicación Digital en la URJC, estoy en tercero.
         > He estado investigando **[empresa]** y me parece muy interesante lo que hacéis en
         > **[aspecto concreto]**. Me gustaría saber más sobre cómo trabajáis el área digital.»
 
-        **Clave:** demuestra que has hecho los deberes. Mencionar algo específico de la empresa marca la diferencia.
+        **Clave:** demuestra que has hecho los deberes.
         """)
 
-    # Quick guide
     with st.expander("Guion de preguntas — consulta rápida", expanded=False):
         st.markdown("""
         **Romper el hielo:**
@@ -368,10 +314,8 @@ def render_fase2():
 
     with st.form("fase2_registro", clear_on_submit=True):
         if empresa_options:
-            empresa_nombre = st.selectbox(
-                "Empresa con la que has hablado:",
-                ["(Otra no listada)"] + empresa_options
-            )
+            empresa_nombre = st.selectbox("Empresa con la que has hablado:",
+                                          ["(Otra no listada)"] + empresa_options)
             if empresa_nombre == "(Otra no listada)":
                 empresa_nombre = st.text_input("Nombre de la empresa:")
         else:
@@ -391,55 +335,41 @@ def render_fase2():
 
         que_hacen = st.text_area("¿Qué hacen en digital (día a día)?", height=80)
         perfiles = st.text_area("¿Qué perfiles buscan?", height=80)
-
         col1, col2 = st.columns(2)
         with col1:
             hab_tecnicas = st.text_area("Habilidades técnicas que valoran", height=80)
         with col2:
             hab_blandas = st.text_area("Competencias blandas clave", height=80)
-
         gap = st.text_area("Lo que echan en falta de la universidad", height=80)
         oportunidades = st.text_area("Oportunidades (prácticas, entrada...)", height=60)
         consejo = st.text_area("Consejo que te dieron", height=60)
         sorpresa = st.text_area("Lo que más te sorprendió o no esperabas", height=80)
 
         submitted = st.form_submit_button("Guardar registro", type="primary", use_container_width=True)
-
         if submitted:
             if not empresa_nombre:
                 st.warning("Indica con qué empresa hablaste.")
             else:
                 registro = {
-                    "empresa_nombre": empresa_nombre,
-                    "persona_contacto": persona,
-                    "cargo_contacto": cargo,
-                    "contacto_linkedin": contacto,
-                    "que_hacen_digital": que_hacen,
-                    "perfiles_buscan": perfiles,
-                    "habilidades_tecnicas": hab_tecnicas,
-                    "competencias_blandas": hab_blandas,
-                    "gap_universidad": gap,
-                    "oportunidades_practicas": oportunidades,
-                    "consejo": consejo,
-                    "sorpresa": sorpresa,
-                    "elevator_pitch_usado": pitch,
+                    "empresa_nombre": empresa_nombre, "persona_contacto": persona,
+                    "cargo_contacto": cargo, "contacto_linkedin": contacto,
+                    "que_hacen_digital": que_hacen, "perfiles_buscan": perfiles,
+                    "habilidades_tecnicas": hab_tecnicas, "competencias_blandas": hab_blandas,
+                    "gap_universidad": gap, "oportunidades_practicas": oportunidades,
+                    "consejo": consejo, "sorpresa": sorpresa, "elevator_pitch_usado": pitch,
                 }
                 try:
-                    save_fase2(
-                        st.session_state.student_name,
-                        st.session_state.student_group,
-                        registro
-                    )
+                    save_fase2(st.session_state.student_user, st.session_state.student_name,
+                               st.session_state.student_group, registro)
                     st.success(f"Registro de {empresa_nombre} guardado. A por la siguiente.")
                 except Exception as e:
                     st.error(f"Error al guardar: {e}")
 
 
 # ============================================
-# FASE 3: POST-EVENTO
+# FASE 3
 # ============================================
 def render_fase3():
-    """Fase 3: Post-event revised competencia map and reflection."""
     st.markdown('<span class="phase-tag phase-post">Fase 3 · Post-evento</span>', unsafe_allow_html=True)
     st.title("Mapa de competencias revisado y reflexión")
     st.markdown(
@@ -451,16 +381,12 @@ def render_fase3():
 
     with tab_comp:
         st.subheader("Mapa de competencias revisado")
-
         df_f1 = get_fase1_data()
-        student_name = st.session_state.student_name
+        user = st.session_state.student_user
 
-        if not df_f1.empty:
-            student_f1 = df_f1[df_f1["estudiante"] == student_name]
-            if not student_f1.empty and "empresa_nombre" in student_f1.columns:
-                empresas_analizadas = student_f1["empresa_nombre"].unique().tolist()
-            else:
-                empresas_analizadas = []
+        if not df_f1.empty and "usuario" in df_f1.columns:
+            student_f1 = df_f1[df_f1["usuario"] == user]
+            empresas_analizadas = student_f1["empresa_nombre"].unique().tolist() if not student_f1.empty and "empresa_nombre" in student_f1.columns else []
         else:
             empresas_analizadas = []
 
@@ -474,11 +400,8 @@ def render_fase3():
             empresa = st.text_input("Nombre de la empresa:")
 
         if empresa:
-            if not df_f1.empty:
-                v1_data = df_f1[
-                    (df_f1["estudiante"] == student_name) &
-                    (df_f1["empresa_nombre"] == empresa)
-                ]
+            if not df_f1.empty and "usuario" in df_f1.columns:
+                v1_data = df_f1[(df_f1["usuario"] == user) & (df_f1["empresa_nombre"] == empresa)]
                 if not v1_data.empty and "competencia_codigo" in v1_data.columns:
                     st.markdown("**Tu análisis v1 (pre-evento):**")
                     all_comps = get_competencias_flat()
@@ -490,17 +413,13 @@ def render_fase3():
                     st.divider()
 
             st.markdown("**Actualiza tu mapeo de competencias con lo que aprendiste:**")
-
             all_comps = get_competencias_flat()
             CAMBIOS = ["Nueva (no estaba en v1)", "Confirmada", "Eliminada", "Nivel ajustado"]
 
             with st.form(f"fase3_comp_{empresa}"):
-                selected = st.multiselect(
-                    "Competencias relevantes (revisadas):",
+                selected = st.multiselect("Competencias relevantes (revisadas):",
                     options=list(all_comps.keys()),
-                    format_func=lambda x: f"{x} — {all_comps[x][:50]}..."
-                )
-
+                    format_func=lambda x: f"{x} — {all_comps[x][:50]}...")
                 comp_v2 = []
                 for code in selected:
                     st.markdown(f"**{code}**: {all_comps[code]}")
@@ -511,23 +430,16 @@ def render_fase3():
                         niv = st.selectbox("Nivel", NIVELES, key=f"f3n_{empresa}_{code}")
                     with c3:
                         cambio = st.selectbox("¿Cambió?", CAMBIOS, key=f"f3c_{empresa}_{code}")
-
                     comp_v2.append({
-                        "codigo": code,
-                        "tipo": get_competencia_type(code),
-                        "justificacion_v2": just,
-                        "nivel_v2": niv,
-                        "cambio_vs_v1": cambio,
+                        "codigo": code, "tipo": get_competencia_type(code),
+                        "justificacion_v2": just, "nivel_v2": niv, "cambio_vs_v1": cambio,
                     })
-
                 if st.form_submit_button("Guardar competencias v2", type="primary", use_container_width=True):
                     if comp_v2:
                         try:
-                            save_fase3_competencias(
-                                student_name,
-                                st.session_state.student_group,
-                                empresa, comp_v2
-                            )
+                            save_fase3_competencias(st.session_state.student_user,
+                                st.session_state.student_name, st.session_state.student_group,
+                                empresa, comp_v2)
                             st.success("Competencias v2 guardadas.")
                         except Exception as e:
                             st.error(f"Error: {e}")
@@ -536,43 +448,22 @@ def render_fase3():
 
     with tab_ref:
         st.subheader("Reflexión final")
-
         with st.form("fase3_reflexion"):
             st.markdown("**Competencias más demandadas**")
-            comp_demandadas = st.text_area(
-                "¿Qué competencias aparecieron como relevantes en la mayoría de empresas? ¿Hay un patrón?",
-                height=120
-            )
-
+            comp_demandadas = st.text_area("¿Qué competencias aparecieron como relevantes en la mayoría de empresas?", height=120)
             st.markdown("**Competencias sorpresa**")
-            comp_sorpresa = st.text_area(
-                "¿Alguna que no tenías en tu radar? ¿Algo que no se trabaja en el Grado pero el mercado pide?",
-                height=120
-            )
-
+            comp_sorpresa = st.text_area("¿Alguna que no tenías en tu radar?", height=120)
             st.markdown("**El gap universidad-empresa**")
-            gap_text = st.text_area(
-                "Según lo que te dijeron, ¿dónde ves el mayor desajuste entre lo que se enseña y lo que se necesita?",
-                height=120
-            )
-
+            gap_text = st.text_area("¿Dónde ves el mayor desajuste entre lo que se enseña y lo que se necesita?", height=120)
             st.divider()
             st.markdown("**Tu posicionamiento profesional**")
-            posicionamiento = st.text_area(
-                "¿Cómo definirías tu perfil? ¿Hacia qué tipo de empresa o rol te orientas? ¿Por qué?",
-                height=120
-            )
-
+            posicionamiento = st.text_area("¿Cómo definirías tu perfil? ¿Hacia qué tipo de empresa o rol te orientas?", height=120)
             st.markdown("**Tu plan de acción — 3 acciones concretas**")
             accion1 = st.text_input("Acción 1:")
             accion2 = st.text_input("Acción 2:")
             accion3 = st.text_input("Acción 3:")
-
             st.markdown("**Valoración de la experiencia**")
-            valoracion = st.text_area(
-                "¿Qué ha sido lo más valioso? ¿Qué harías diferente?",
-                height=100
-            )
+            valoracion = st.text_area("¿Qué ha sido lo más valioso? ¿Qué harías diferente?", height=100)
 
             if st.form_submit_button("Guardar reflexión final", type="primary", use_container_width=True):
                 plan = f"1. {accion1} | 2. {accion2} | 3. {accion3}"
@@ -585,11 +476,8 @@ def render_fase3():
                     "valoracion_experiencia": valoracion,
                 }
                 try:
-                    save_fase3_reflexion(
-                        st.session_state.student_name,
-                        st.session_state.student_group,
-                        reflexion
-                    )
+                    save_fase3_reflexion(st.session_state.student_user,
+                        st.session_state.student_name, st.session_state.student_group, reflexion)
                     st.success("Reflexión guardada. Enhorabuena por completar la actividad.")
                 except Exception as e:
                     st.error(f"Error: {e}")
@@ -599,12 +487,16 @@ def render_fase3():
 # STUDENT HOME
 # ============================================
 def render_student_home():
-    """Student home with phase selection."""
-    st.markdown(f"### Hola, {st.session_state.student_name}")
+    col_logo1, col_logo2 = st.columns([1, 3])
+    with col_logo1:
+        st.image(LOGO_URJC, width=120)
+    with col_logo2:
+        st.markdown(f"### Hola, {st.session_state.student_name}")
+        st.caption(f"@{st.session_state.student_user} · Grupo {st.session_state.student_group}")
+
     st.markdown("Selecciona la fase en la que quieres trabajar:")
 
     col1, col2, col3 = st.columns(3)
-
     with col1:
         st.markdown('<span class="phase-tag phase-pre">Pre-evento</span>', unsafe_allow_html=True)
         st.markdown("#### Fase 1")
@@ -612,7 +504,6 @@ def render_student_home():
         if st.button("Ir a Fase 1", key="goto_f1", use_container_width=True):
             st.session_state.current_phase = "fase1"
             st.rerun()
-
     with col2:
         st.markdown('<span class="phase-tag phase-live">En directo</span>', unsafe_allow_html=True)
         st.markdown("#### Fase 2")
@@ -620,7 +511,6 @@ def render_student_home():
         if st.button("Ir a Fase 2", key="goto_f2", use_container_width=True):
             st.session_state.current_phase = "fase2"
             st.rerun()
-
     with col3:
         st.markdown('<span class="phase-tag phase-post">Post-evento</span>', unsafe_allow_html=True)
         st.markdown("#### Fase 3")
@@ -648,6 +538,7 @@ def main():
 
     if st.session_state.user_type == "teacher":
         with st.sidebar:
+            st.image(LOGO_DIGICOM_NEG, width=180)
             st.markdown("**Modo profesor**")
             if st.button("Cerrar sesión", use_container_width=True):
                 st.session_state.user_type = None
@@ -656,7 +547,6 @@ def main():
         return
 
     render_student_nav()
-
     phase = st.session_state.current_phase
     if phase == "fase1":
         render_fase1()
