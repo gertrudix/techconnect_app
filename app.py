@@ -150,7 +150,7 @@ def render_login():
                     st.warning("Introduce usuario y contraseña.")
 
     with col2:
-        st.markdown("### Acceso Docente")
+        st.markdown("### Acceso docente")
         with st.form("teacher_login"):
             password = st.text_input("Contraseña", type="password")
             submitted = st.form_submit_button("Acceder al dashboard", use_container_width=True)
