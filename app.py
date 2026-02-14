@@ -15,10 +15,8 @@ from sheets_backend import (
 )
 from dashboard import render_dashboard
 
-# Logos
-LOGO_URJC = "https://comunicaciondigital.es/wp-content/uploads/2025/07/logo-urjc.png"
-LOGO_DIGICOM = "https://comunicaciondigital.es/wp-content/uploads/2025/07/logo-DIGICOM-Lab-positivo-H.png"
-LOGO_DIGICOM_NEG = "https://comunicaciondigital.es/wp-content/uploads/2025/07/logo-DIGICOM-Lab-negativo-stl.png"
+# Logo (file in repo root)
+LOGO = "logo-DIGICOM-Lab-negativo-H.png"
 
 # ============================================
 # PAGE CONFIG
@@ -66,16 +64,6 @@ st.markdown("""
     }
     [data-testid="stSidebar"] img { margin-bottom: 0.5rem; }
 
-    /* Login header */
-    .login-header {
-        background: #1a1a2e; color: #fff; padding: 2.5rem 2rem 2rem;
-        border-radius: 0 0 16px 16px; text-align: center; margin: -1.5rem -1rem 2rem;
-    }
-    .login-header h1 { color: #fff !important; margin: 0.5rem 0 0.25rem; font-size: 2rem; }
-    .login-header p { color: rgba(255,255,255,0.7); font-size: 0.95rem; }
-    .login-logos { display: flex; justify-content: center; align-items: center; gap: 2rem; margin-bottom: 1rem; }
-    .login-logos img { height: 40px; }
-
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
 </style>
@@ -101,14 +89,13 @@ if "current_phase" not in st.session_state:
 # LOGIN
 # ============================================
 def render_login():
-    st.markdown(f"""
-    <div class="login-header">
-        <div class="login-logos">
-            <img src="{LOGO_URJC}" alt="URJC">
-            <img src="{LOGO_DIGICOM_NEG}" alt="DIGICOM Lab">
-        </div>
-        <h1>TECH CONNECT 2026</h1>
-        <p>Skills Map — Networking profesional y análisis de competencias</p>
+    col_l, col_c, col_r = st.columns([1, 2, 1])
+    with col_c:
+        st.image(LOGO, width=220)
+    st.markdown("""
+    <div style="text-align:center; margin-bottom:1.5rem;">
+        <h1 style="font-size:2rem; margin:0.5rem 0 0.25rem;">TECH CONNECT 2026</h1>
+        <p style="color:#666; font-size:0.95rem;">Skills Map — Networking profesional y análisis de competencias</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -153,7 +140,7 @@ def render_login():
 # ============================================
 def render_student_nav():
     with st.sidebar:
-        st.image(LOGO_DIGICOM_NEG, width=180)
+        st.image(LOGO, width=180)
         st.markdown(f"**{st.session_state.student_name}**")
         st.caption(f"@{st.session_state.student_user} · Grupo {st.session_state.student_group}")
         st.divider()
@@ -487,12 +474,9 @@ def render_fase3():
 # STUDENT HOME
 # ============================================
 def render_student_home():
-    col_logo1, col_logo2 = st.columns([1, 3])
-    with col_logo1:
-        st.image(LOGO_URJC, width=120)
-    with col_logo2:
-        st.markdown(f"### Hola, {st.session_state.student_name}")
-        st.caption(f"@{st.session_state.student_user} · Grupo {st.session_state.student_group}")
+    st.image(LOGO, width=180)
+    st.markdown(f"### Hola, {st.session_state.student_name}")
+    st.caption(f"@{st.session_state.student_user} · Grupo {st.session_state.student_group}")
 
     st.markdown("Selecciona la fase en la que quieres trabajar:")
 
@@ -538,7 +522,7 @@ def main():
 
     if st.session_state.user_type == "teacher":
         with st.sidebar:
-            st.image(LOGO_DIGICOM_NEG, width=180)
+            st.image(LOGO, width=180)
             st.markdown("**Modo profesor**")
             if st.button("Cerrar sesión", use_container_width=True):
                 st.session_state.user_type = None
