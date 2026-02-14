@@ -1,9 +1,11 @@
 """
 Google Sheets backend for TechConnect Skills Map.
 Handles all read/write operations with Google Sheets.
+Includes retry logic and caching for concurrent usage (40+ students).
 """
 
 import json
+import time
 import streamlit as st
 import gspread
 from gspread.exceptions import APIError, WorksheetNotFound
@@ -25,6 +27,10 @@ SCOPES = [
 ]
 
 
+# ============================================
+# CONNECTION (cached)
+# ============================================
+
 @st.cache_resource(ttl=300)
 def get_gspread_client():
     """Initialize gspread client from Streamlit secrets."""
@@ -36,9 +42,10 @@ def get_gspread_client():
     creds = Credentials.from_service_account_info(creds_dict, scopes=SCOPES)
     return gspread.authorize(creds)
 
+
 @st.cache_resource(ttl=60)
 def get_spreadsheet():
-    """Get the main spreadsheet."""
+    """Get the main spreadsheet (cached 60s to avoid rate limits)."""
     client = get_gspread_client()
     spreadsheet_url = st.secrets.get("spreadsheet_url", None)
     spreadsheet_key = st.secrets.get("spreadsheet_key", None)
@@ -50,6 +57,52 @@ def get_spreadsheet():
         return client.open("TechConnect_Skills_Map")
 
 
+# ============================================
+# RETRY HELPERS (rate limit protection)
+# ============================================
+
+def safe_append_row(ws, row, max_retries=3):
+    """Append a row with automatic retry on rate limit."""
+    for attempt in range(max_retries):
+        try:
+            ws.append_row(row, value_input_option="USER_ENTERED")
+            return True
+        except APIError as e:
+            if attempt < max_retries - 1:
+                time.sleep(2 + attempt * 3)
+            else:
+                raise e
+
+
+def safe_append_rows(ws, rows, max_retries=3):
+    """Append multiple rows with automatic retry on rate limit."""
+    for attempt in range(max_retries):
+        try:
+            ws.append_rows(rows, value_input_option="USER_ENTERED")
+            return True
+        except APIError as e:
+            if attempt < max_retries - 1:
+                time.sleep(2 + attempt * 3)
+            else:
+                raise e
+
+
+def safe_read(ws, max_retries=3):
+    """Read all records with automatic retry on rate limit."""
+    for attempt in range(max_retries):
+        try:
+            return ws.get_all_records()
+        except APIError as e:
+            if attempt < max_retries - 1:
+                time.sleep(2 + attempt * 3)
+            else:
+                raise e
+
+
+# ============================================
+# INITIALIZATION
+# ============================================
+
 def init_spreadsheet():
     """
     Initialize all required sheets with headers if they don't exist.
@@ -58,17 +111,14 @@ def init_spreadsheet():
     ss = get_spreadsheet()
     existing = [ws.title for ws in ss.worksheets()]
 
-    # Empresas sheet
     if SHEET_EMPRESAS not in existing:
         ws = ss.add_worksheet(title=SHEET_EMPRESAS, rows=50, cols=5)
         ws.append_row(["id", "nombre", "sector", "web", "descripcion"])
 
-    # Estudiantes sheet
     if SHEET_ESTUDIANTES not in existing:
         ws = ss.add_worksheet(title=SHEET_ESTUDIANTES, rows=200, cols=4)
         ws.append_row(["nombre", "grupo", "email", "fecha_registro"])
 
-    # Fase 1 sheet
     if SHEET_FASE1 not in existing:
         ws = ss.add_worksheet(title=SHEET_FASE1, rows=1000, cols=15)
         ws.append_row([
@@ -78,7 +128,6 @@ def init_spreadsheet():
             "competencia_nivel",
         ])
 
-    # Fase 2 sheet
     if SHEET_FASE2 not in existing:
         ws = ss.add_worksheet(title=SHEET_FASE2, rows=1000, cols=20)
         ws.append_row([
@@ -89,7 +138,6 @@ def init_spreadsheet():
             "consejo", "sorpresa", "elevator_pitch_usado",
         ])
 
-    # Fase 3 sheet
     if SHEET_FASE3 not in existing:
         ws = ss.add_worksheet(title=SHEET_FASE3, rows=1000, cols=15)
         ws.append_row([
@@ -103,15 +151,17 @@ def init_spreadsheet():
     return True
 
 
-# ---- EMPRESAS ----
+# ============================================
+# EMPRESAS
+# ============================================
 
+@st.cache_data(ttl=30)
 def get_empresas():
-    """Get list of empresas from the Empresas sheet."""
+    """Get list of empresas (cached 30s)."""
     ss = get_spreadsheet()
     try:
         ws = ss.worksheet(SHEET_EMPRESAS)
-        records = ws.get_all_records()
-        return records
+        return safe_read(ws)
     except (WorksheetNotFound, APIError):
         return []
 
@@ -120,41 +170,45 @@ def add_empresa(empresa_data):
     """Add a new empresa to the sheet."""
     ss = get_spreadsheet()
     ws = ss.worksheet(SHEET_EMPRESAS)
-    ws.append_row([
+    safe_append_row(ws, [
         empresa_data.get("id", ""),
         empresa_data.get("nombre", ""),
         empresa_data.get("sector", ""),
         empresa_data.get("web", ""),
         empresa_data.get("descripcion", ""),
     ])
+    # Clear empresas cache so new empresa shows immediately
+    get_empresas.clear()
 
 
-# ---- ESTUDIANTES ----
+# ============================================
+# ESTUDIANTES
+# ============================================
 
 def register_student(nombre, grupo, email=""):
     """Register a student."""
     ss = get_spreadsheet()
     ws = ss.worksheet(SHEET_ESTUDIANTES)
-    ws.append_row([nombre, grupo, email, datetime.now().isoformat()])
+    safe_append_row(ws, [nombre, grupo, email, datetime.now().isoformat()])
 
 
+@st.cache_data(ttl=30)
 def get_students():
-    """Get all registered students."""
+    """Get all registered students (cached 30s)."""
     ss = get_spreadsheet()
     try:
         ws = ss.worksheet(SHEET_ESTUDIANTES)
-        return ws.get_all_records()
+        return safe_read(ws)
     except (WorksheetNotFound, APIError):
         return []
 
 
-# ---- FASE 1 ----
+# ============================================
+# FASE 1
+# ============================================
 
 def save_fase1(estudiante, grupo, empresa_id, empresa_nombre, analisis, competencias_list):
-    """
-    Save Fase 1 data. competencias_list is a list of dicts:
-    [{"codigo": "COM2", "tipo": "Blanda", "justificacion": "...", "nivel": "Intermedio"}, ...]
-    """
+    """Save Fase 1 data."""
     ss = get_spreadsheet()
     ws = ss.worksheet(SHEET_FASE1)
     ts = datetime.now().isoformat()
@@ -173,22 +227,27 @@ def save_fase1(estudiante, grupo, empresa_id, empresa_nombre, analisis, competen
         ])
 
     if rows:
-        ws.append_rows(rows)
+        safe_append_rows(ws, rows)
+    # Clear read cache
+    get_fase1_data.clear()
     return True
 
 
+@st.cache_data(ttl=30)
 def get_fase1_data():
-    """Get all Fase 1 data as a DataFrame."""
+    """Get all Fase 1 data as a DataFrame (cached 30s)."""
     ss = get_spreadsheet()
     try:
         ws = ss.worksheet(SHEET_FASE1)
-        records = ws.get_all_records()
+        records = safe_read(ws)
         return pd.DataFrame(records)
     except (WorksheetNotFound, APIError):
         return pd.DataFrame()
 
 
-# ---- FASE 2 ----
+# ============================================
+# FASE 2
+# ============================================
 
 def save_fase2(estudiante, grupo, registro):
     """Save Fase 2 (during event) data."""
@@ -196,7 +255,7 @@ def save_fase2(estudiante, grupo, registro):
     ws = ss.worksheet(SHEET_FASE2)
     ts = datetime.now().isoformat()
 
-    ws.append_row([
+    safe_append_row(ws, [
         ts, estudiante, grupo,
         registro.get("empresa_nombre", ""),
         registro.get("persona_contacto", ""),
@@ -212,21 +271,25 @@ def save_fase2(estudiante, grupo, registro):
         registro.get("sorpresa", ""),
         registro.get("elevator_pitch_usado", ""),
     ])
+    get_fase2_data.clear()
     return True
 
 
+@st.cache_data(ttl=30)
 def get_fase2_data():
-    """Get all Fase 2 data as a DataFrame."""
+    """Get all Fase 2 data as a DataFrame (cached 30s)."""
     ss = get_spreadsheet()
     try:
         ws = ss.worksheet(SHEET_FASE2)
-        records = ws.get_all_records()
+        records = safe_read(ws)
         return pd.DataFrame(records)
     except (WorksheetNotFound, APIError):
         return pd.DataFrame()
 
 
-# ---- FASE 3 ----
+# ============================================
+# FASE 3
+# ============================================
 
 def save_fase3_competencias(estudiante, grupo, empresa_nombre, competencias_v2):
     """Save Fase 3 competencias v2."""
@@ -247,7 +310,8 @@ def save_fase3_competencias(estudiante, grupo, empresa_nombre, competencias_v2):
         ])
 
     if rows:
-        ws.append_rows(rows)
+        safe_append_rows(ws, rows)
+    get_fase3_data.clear()
     return True
 
 
@@ -257,7 +321,7 @@ def save_fase3_reflexion(estudiante, grupo, reflexion):
     ws = ss.worksheet(SHEET_FASE3)
     ts = datetime.now().isoformat()
 
-    ws.append_row([
+    safe_append_row(ws, [
         ts, estudiante, grupo, "REFLEXION_GENERAL",
         "", "", "", "", "",
         reflexion.get("competencias_mas_demandadas", ""),
@@ -267,15 +331,17 @@ def save_fase3_reflexion(estudiante, grupo, reflexion):
         reflexion.get("plan_accion", ""),
         reflexion.get("valoracion_experiencia", ""),
     ])
+    get_fase3_data.clear()
     return True
 
 
+@st.cache_data(ttl=30)
 def get_fase3_data():
-    """Get all Fase 3 data as a DataFrame."""
+    """Get all Fase 3 data as a DataFrame (cached 30s)."""
     ss = get_spreadsheet()
     try:
         ws = ss.worksheet(SHEET_FASE3)
-        records = ws.get_all_records()
+        records = safe_read(ws)
         return pd.DataFrame(records)
     except (WorksheetNotFound, APIError):
         return pd.DataFrame()
