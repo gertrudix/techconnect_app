@@ -3,6 +3,8 @@ Tech Connect 2026 — Skills Map
 DIGICOM Lab · Grado en Comunicación Digital · Universidad Rey Juan Carlos
 """
 
+import base64
+import pathlib
 import streamlit as st
 from competencias import (
     CATEGORIAS, NIVELES, CANALES_DIGITALES,
@@ -15,8 +17,28 @@ from sheets_backend import (
 )
 from dashboard import render_dashboard
 
-# Logo (file in repo root)
-LOGO = "logo-DIGICOM-Lab-negativo-H.png"
+
+# ============================================
+# LOGO — base64 for pixel-perfect HTML rendering
+# ============================================
+LOGO_FILE = "logo-DIGICOM-Lab-negativo-H.png"
+
+@st.cache_data
+def get_logo_b64():
+    """Read logo from repo and return base64 string."""
+    logo_path = pathlib.Path(__file__).parent / LOGO_FILE
+    if logo_path.exists():
+        return base64.b64encode(logo_path.read_bytes()).decode()
+    return None
+
+def logo_html(width=200, center=True, margin_bottom="1rem"):
+    """Return HTML img tag for the logo."""
+    b64 = get_logo_b64()
+    if not b64:
+        return ""
+    align = "display:block; margin-left:auto; margin-right:auto;" if center else ""
+    return f'<img src="data:image/png;base64,{b64}" width="{width}" style="{align} margin-bottom:{margin_bottom};" alt="DIGICOM Lab">'
+
 
 # ============================================
 # PAGE CONFIG
@@ -52,6 +74,14 @@ st.markdown("""
         border-radius: 8px; padding: 1.25rem; margin: 0.75rem 0;
     }
 
+    /* Login hero */
+    .login-hero {
+        background: #1a1a2e; color: #fff; padding: 2rem 2rem 1.5rem;
+        border-radius: 12px; text-align: center; margin-bottom: 1.5rem;
+    }
+    .login-hero h1 { color: #fff !important; margin: 0.75rem 0 0.25rem; font-size: 2rem; }
+    .login-hero p { color: rgba(255,255,255,0.65); font-size: 0.95rem; margin: 0; }
+
     /* Sidebar dark */
     [data-testid="stSidebar"] { background: #1a1a2e; }
     [data-testid="stSidebar"] * { color: #ffffff !important; }
@@ -62,7 +92,6 @@ st.markdown("""
     [data-testid="stSidebar"] .stButton button:hover {
         background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.4);
     }
-    [data-testid="stSidebar"] img { margin-bottom: 0.5rem; }
 
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -89,13 +118,12 @@ if "current_phase" not in st.session_state:
 # LOGIN
 # ============================================
 def render_login():
-    col_l, col_c, col_r = st.columns([1, 2, 1])
-    with col_c:
-        st.image(LOGO, width=220)
-    st.markdown("""
-    <div style="text-align:center; margin-bottom:1.5rem;">
-        <h1 style="font-size:2rem; margin:0.5rem 0 0.25rem;">TECH CONNECT 2026</h1>
-        <p style="color:#666; font-size:0.95rem;">Skills Map — Networking profesional y análisis de competencias</p>
+    logo_tag = logo_html(width=200, center=True, margin_bottom="0.75rem")
+    st.markdown(f"""
+    <div class="login-hero">
+        {logo_tag}
+        <h1>TECH CONNECT 2026</h1>
+        <p>Skills Map — Networking profesional y análisis de competencias</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -140,7 +168,7 @@ def render_login():
 # ============================================
 def render_student_nav():
     with st.sidebar:
-        st.image(LOGO, width=180)
+        st.markdown(logo_html(width=160, center=False, margin_bottom="0.5rem"), unsafe_allow_html=True)
         st.markdown(f"**{st.session_state.student_name}**")
         st.caption(f"@{st.session_state.student_user} · Grupo {st.session_state.student_group}")
         st.divider()
@@ -474,7 +502,7 @@ def render_fase3():
 # STUDENT HOME
 # ============================================
 def render_student_home():
-    st.image(LOGO, width=180)
+    st.markdown(logo_html(width=180, center=False, margin_bottom="0.5rem"), unsafe_allow_html=True)
     st.markdown(f"### Hola, {st.session_state.student_name}")
     st.caption(f"@{st.session_state.student_user} · Grupo {st.session_state.student_group}")
 
@@ -522,7 +550,7 @@ def main():
 
     if st.session_state.user_type == "teacher":
         with st.sidebar:
-            st.image(LOGO, width=180)
+            st.markdown(logo_html(width=160, center=False, margin_bottom="0.5rem"), unsafe_allow_html=True)
             st.markdown("**Modo profesor**")
             if st.button("Cerrar sesión", use_container_width=True):
                 st.session_state.user_type = None
