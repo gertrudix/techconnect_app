@@ -798,7 +798,7 @@ def render_my_chart():
         st.info("Aún no has seleccionado competencias. Completa la Fase 1 para ver tu mapa.")
         return
 
-    # ---- RADAR CHART ----
+    # ---- RADAR CHART with group average ----
     import plotly.graph_objects as go
 
     codes = list(comp_data.keys())
@@ -806,23 +806,49 @@ def render_my_chart():
     v1_values = [comp_data[c]["v1"] for c in codes]
     v2_values = [comp_data[c]["v2"] for c in codes]
 
+    # Calculate group average for the same competencias
+    avg_values = []
+    all_f1 = get_fase1_data()  # ALL students
+    all_f3 = get_fase3_data()
+    if all_f1 is not None and not all_f1.empty and "competencia_codigo" in all_f1.columns:
+        # Count unique users
+        user_col = "usuario" if "usuario" in all_f1.columns else "estudiante"
+        n_users = all_f1[user_col].nunique() if user_col in all_f1.columns else 1
+        n_users = max(n_users, 1)
+        for code in codes:
+            # Count how many times this competencia was selected across ALL students (f1+f3)
+            count_f1 = len(all_f1[all_f1["competencia_codigo"].astype(str) == code]) if "competencia_codigo" in all_f1.columns else 0
+            count_f3 = 0
+            if all_f3 is not None and not all_f3.empty and "competencia_codigo" in all_f3.columns:
+                f3_comp = all_f3[all_f3["empresa_nombre"] != "REFLEXION_GENERAL"] if "empresa_nombre" in all_f3.columns else all_f3
+                count_f3 = len(f3_comp[f3_comp["competencia_codigo"].astype(str) == code])
+            avg_values.append(round((count_f1 + count_f3) / n_users, 1))
+    else:
+        avg_values = [0] * len(codes)
+
     fig = go.Figure()
     fig.add_trace(go.Scatterpolar(
         r=v1_values + [v1_values[0]], theta=labels + [labels[0]],
-        fill="toself", name="Fase 1 (pre-evento)",
+        fill="toself", name="Tus competencias (Fase 1)",
         fillcolor="rgba(26,26,46,0.15)", line=dict(color="#1a1a2e", width=2)
     ))
     fig.add_trace(go.Scatterpolar(
         r=v2_values + [v2_values[0]], theta=labels + [labels[0]],
-        fill="toself", name="Fase 3 (post-evento)",
+        fill="toself", name="Tus competencias (Fase 3)",
         fillcolor="rgba(231,76,60,0.15)", line=dict(color="#e74c3c", width=2)
     ))
-    max_val = max(max(v1_values, default=1), max(v2_values, default=1))
+    if any(v > 0 for v in avg_values):
+        fig.add_trace(go.Scatterpolar(
+            r=avg_values + [avg_values[0]], theta=labels + [labels[0]],
+            fill="toself", name="Media del grupo",
+            fillcolor="rgba(46,204,113,0.08)", line=dict(color="#2ecc71", width=2, dash="dot")
+        ))
+    max_val = max(max(v1_values, default=1), max(v2_values, default=1), max(avg_values, default=1))
     fig.update_layout(
         polar=dict(radialaxis=dict(visible=True, range=[0, max_val + 1])),
         showlegend=True, legend=dict(orientation="h", y=-0.1),
-        title="Competencias: antes vs después del evento",
-        height=500, margin=dict(t=60, b=60, l=80, r=80)
+        title="Tus competencias vs media del grupo",
+        height=550, margin=dict(t=60, b=60, l=80, r=80)
     )
     st.plotly_chart(fig, use_container_width=True)
 
@@ -972,6 +998,21 @@ class SkillsMapPDF:
         self.pdf.set_text_color(80, 80, 80)
         self.pdf.cell(0, 6, "Tech Connect 2026 · Lunes 2 de marzo · Campus de Fuenlabrada · URJC", align="C", ln=True)
 
+        # Intro text
+        self.pdf.ln(15)
+        self.pdf.set_font(self.F, "", 9)
+        self.pdf.set_text_color(80, 80, 80)
+        intro = (
+            "Este informe recoge el resultado de tu proceso de evaluación de competencias "
+            "durante el Tech Connect 2026, la actividad de networking profesional del Grado "
+            "en Comunicación Digital de la URJC. A lo largo de tres fases (antes, durante y "
+            "después del evento) has investigado empresas del sector, conversado con profesionales "
+            "y reflexionado sobre las competencias que el mercado demanda. "
+            "Lo que tienes entre manos es tu mapa personal de competencias: una fotografía "
+            "de dónde estás y hacia dónde quieres ir profesionalmente."
+        )
+        self.pdf.multi_cell(190, 5, intro)
+
     def section_title(self, title, phase_tag=None):
         self.pdf.ln(5)
         self.pdf.set_fill_color(*DARK_BLUE)
@@ -1018,8 +1059,59 @@ class SkillsMapPDF:
         self.pdf.line(10, self.pdf.get_y(), 200, self.pdf.get_y())
         self.pdf.ln(3)
 
+    def add_chart_image(self, img_bytes):
+        """Insert a PNG chart image centered on a new page."""
+        import tempfile, os
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        tmp.write(img_bytes)
+        tmp.close()
+        try:
+            self.pdf.add_page()
+            self.section_title("Mapa de competencias — Gráfico comparativo", "ANÁLISIS")
+            # Center the image (190mm wide, keep aspect)
+            self.pdf.image(tmp.name, x=10, y=self.pdf.get_y(), w=190)
+        except Exception:
+            pass
+        finally:
+            os.unlink(tmp.name)
+
     def output(self):
         return bytes(self.pdf.output())
+
+
+def _generate_radar_png(all_comps, comp_data):
+    """Generate radar chart as PNG bytes for PDF. Returns None if kaleido unavailable."""
+    try:
+        import plotly.graph_objects as go
+
+        codes = list(comp_data.keys())
+        if not codes:
+            return None
+        labels = [f"{c} {all_comps.get(c, '')[:20]}..." for c in codes]
+        v1 = [comp_data[c]["v1"] for c in codes]
+        v2 = [comp_data[c]["v2"] for c in codes]
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatterpolar(
+            r=v1 + [v1[0]], theta=labels + [labels[0]],
+            fill="toself", name="Fase 1 (pre)",
+            fillcolor="rgba(26,26,46,0.15)", line=dict(color="#1a1a2e", width=2)
+        ))
+        fig.add_trace(go.Scatterpolar(
+            r=v2 + [v2[0]], theta=labels + [labels[0]],
+            fill="toself", name="Fase 3 (post)",
+            fillcolor="rgba(231,76,60,0.15)", line=dict(color="#e74c3c", width=2)
+        ))
+        mx = max(max(v1, default=1), max(v2, default=1))
+        fig.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, mx + 1])),
+            showlegend=True, legend=dict(orientation="h", y=-0.15),
+            title="Competencias: antes vs después del evento",
+            width=900, height=550, margin=dict(t=60, b=80, l=80, r=80)
+        )
+        return fig.to_image(format="png", scale=2, engine="kaleido")
+    except Exception:
+        return None
 
 
 def generate_full_pdf(all_comps, comp_data, comps_by_cat, my_f1, my_f2, my_f3):
@@ -1092,6 +1184,15 @@ def generate_full_pdf(all_comps, comp_data, comps_by_cat, my_f1, my_f2, my_f3):
                     doc.competencia(code, desc, extra)
                 doc.pdf.ln(2)
                 doc.separator()
+
+    # RADAR CHART IMAGE
+    if comp_data:
+        try:
+            chart_bytes = _generate_radar_png(all_comps, comp_data)
+            if chart_bytes:
+                doc.add_chart_image(chart_bytes)
+        except Exception:
+            pass
 
     # RESUMEN COMPARATIVO
     if comp_data:
