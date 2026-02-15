@@ -4,7 +4,6 @@ DIGICOM Lab · Grado en Comunicación Digital · Universidad Rey Juan Carlos
 """
 
 import base64
-import io
 import pathlib
 import streamlit as st
 from competencias import (
@@ -762,7 +761,7 @@ def render_fase3():
 def render_my_chart():
     render_phase_nav()
     st.title("Mi mapa de competencias")
-    st.markdown("Visualización de las competencias que has seleccionado a lo largo del proceso.")
+    st.markdown("Comparativa de las competencias que seleccionaste antes y después del evento.")
 
     all_comps = get_competencias_flat()
     comps_by_cat = get_competencias_by_category()
@@ -770,7 +769,7 @@ def render_my_chart():
     my_f3 = filter_my_data(get_fase3_data())
 
     # Gather all competencias selected by this student
-    comp_data = {}  # {code: {"v1_count": n, "v1_nivel": [], "v2_count": n, ...}}
+    comp_data = {}  # {code: {"v1": n, "v2": n, "empresas_v1": [], "empresas_v2": []}}
 
     if my_f1 is not None and not my_f1.empty and "competencia_codigo" in my_f1.columns:
         for _, row in my_f1.iterrows():
@@ -799,37 +798,55 @@ def render_my_chart():
         st.info("Aún no has seleccionado competencias. Completa la Fase 1 para ver tu mapa.")
         return
 
-    # Bar chart by category
-    import pandas as pd
+    # ---- RADAR CHART ----
+    import plotly.graph_objects as go
 
+    # Build radar data: each competencia is an axis, values = times selected
+    codes = list(comp_data.keys())
+    labels = [f"{c}\n{all_comps.get(c, '')[:25]}..." for c in codes]
+    v1_values = [comp_data[c]["v1"] for c in codes]
+    v2_values = [comp_data[c]["v2"] for c in codes]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=v1_values + [v1_values[0]],  # close the polygon
+        theta=labels + [labels[0]],
+        fill="toself", name="Fase 1 (pre-evento)",
+        fillcolor="rgba(26,26,46,0.15)", line=dict(color="#1a1a2e", width=2)
+    ))
+    fig.add_trace(go.Scatterpolar(
+        r=v2_values + [v2_values[0]],
+        theta=labels + [labels[0]],
+        fill="toself", name="Fase 3 (post-evento)",
+        fillcolor="rgba(231,76,60,0.15)", line=dict(color="#e74c3c", width=2)
+    ))
+    max_val = max(max(v1_values, default=1), max(v2_values, default=1))
+    fig.update_layout(
+        polar=dict(radialaxis=dict(visible=True, range=[0, max_val + 1], tickvals=list(range(max_val + 2)))),
+        showlegend=True, legend=dict(orientation="h", y=-0.1),
+        title="Competencias: antes vs después del evento",
+        height=500, margin=dict(t=60, b=60, l=80, r=80)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # ---- Detail table ----
+    st.markdown("### Detalle por competencia")
     for cat_key, cat in comps_by_cat.items():
         cat_codes = [c for c in comp_data if c.startswith(cat_key)]
         if cat_codes:
-            st.markdown(f"### {cat['label']}")
-            chart_data = []
-            for code in cat_codes:
-                desc = all_comps.get(code, "")[:40]
-                d = comp_data[code]
-                chart_data.append({"Competencia": f"{code}", "Fase 1 (pre)": d["v1"], "Fase 3 (post)": d["v2"]})
-            df = pd.DataFrame(chart_data)
-            st.bar_chart(df.set_index("Competencia"), color=["#1a1a2e", "#e74c3c"])
-
-            # Detail
+            st.markdown(f"**{cat['label']}**")
             for code in cat_codes:
                 d = comp_data[code]
                 desc = all_comps.get(code, "")
                 emps = list(set(d["empresas_v1"] + d["empresas_v2"]))
-                st.markdown(f"**{code}** — {desc}")
-                st.caption(f"Seleccionada en Fase 1: {d['v1']} vez/veces · Fase 3: {d['v2']} · Empresas: {', '.join(emps)}")
+                st.markdown(f"- **{code}** — {desc}")
+                st.caption(f"  Fase 1: {d['v1']}x · Fase 3: {d['v2']}x · Empresas: {', '.join(emps)}")
             st.divider()
 
-    # PDF download
-    st.markdown("### Descargar resumen")
-    st.markdown("Descarga un PDF con tu mapa de competencias y reflexión final.")
+    # ---- PDF download ----
+    st.markdown("### Descargar resumen en PDF")
 
-    email = st.text_input("Tu email (opcional — para tus registros):", key="pdf_email")
-
-    if st.button("Generar PDF", type="primary", use_container_width=True):
+    if st.button("Generar y descargar PDF", type="primary", use_container_width=True):
         try:
             pdf_bytes = generate_pdf(all_comps, comp_data, comps_by_cat)
             st.download_button(
@@ -844,14 +861,13 @@ def render_my_chart():
 
 
 def generate_pdf(all_comps, comp_data, comps_by_cat):
-    """Generate a simple PDF summary using fpdf2."""
+    """Generate a PDF summary using fpdf2."""
     from fpdf import FPDF
 
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
 
-    # Title
     pdf.set_font("Helvetica", "B", 18)
     pdf.cell(0, 12, "Tech Connect 2026 - Skills Map", ln=True, align="C")
     pdf.set_font("Helvetica", "", 11)
@@ -859,7 +875,6 @@ def generate_pdf(all_comps, comp_data, comps_by_cat):
     pdf.cell(0, 8, f"Grupo: {st.session_state.student_group}", ln=True, align="C")
     pdf.ln(10)
 
-    # Competencias by category
     pdf.set_font("Helvetica", "B", 14)
     pdf.cell(0, 10, "Mapa de competencias", ln=True)
     pdf.ln(3)
@@ -876,13 +891,11 @@ def generate_pdf(all_comps, comp_data, comps_by_cat):
                 pdf.set_font("Helvetica", "B", 10)
                 pdf.cell(0, 6, f"  {code}", ln=True)
                 pdf.set_font("Helvetica", "", 9)
-                # Wrap long text
                 pdf.multi_cell(0, 5, f"    {desc}")
                 pdf.cell(0, 5, f"    Fase 1: {d['v1']}x | Fase 3: {d['v2']}x | Empresas: {', '.join(emps)}", ln=True)
                 pdf.ln(2)
             pdf.ln(3)
 
-    # Reflexion
     my_f3 = filter_my_data(get_fase3_data())
     if my_f3 is not None and not my_f3.empty and "empresa_nombre" in my_f3.columns:
         ref = my_f3[my_f3["empresa_nombre"] == "REFLEXION_GENERAL"]
@@ -904,12 +917,11 @@ def generate_pdf(all_comps, comp_data, comps_by_cat):
                     pdf.multi_cell(0, 5, f"  {val}")
                     pdf.ln(2)
 
-    # Footer
     pdf.ln(10)
     pdf.set_font("Helvetica", "I", 8)
     pdf.cell(0, 5, "DIGICOM Lab - Grado en Comunicacion Digital - URJC - Ciberimaginario", ln=True, align="C")
 
-    return pdf.output()
+    return bytes(pdf.output())
 
 
 # ============================================
