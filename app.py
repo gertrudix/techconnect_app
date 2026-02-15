@@ -874,14 +874,17 @@ def render_my_chart():
     if st.button("Generar y descargar PDF", type="primary", use_container_width=True):
         try:
             # Debug: show logo info
-            import pathlib as _pl
-            _logo = _pl.Path("logo-urjc.png")
-            if _logo.exists():
+            import pathlib as _pl, glob as _gl
+            _app_dir = _pl.Path(__file__).parent
+            _candidates = [_app_dir / "logo-urjc.png", _pl.Path("logo-urjc.png")]
+            _candidates += [_pl.Path(f) for f in _gl.glob("/mount/src/**/logo-urjc.png", recursive=True)]
+            _found = [str(p) for p in _candidates if p.exists()]
+            if _found:
                 from PIL import Image as _Im
-                _im = _Im.open(str(_logo))
-                st.caption(f"Logo URJC encontrado: {_im.size}, modo: {_im.mode}, {_logo.stat().st_size} bytes")
+                _im = _Im.open(_found[0])
+                st.caption(f"Logo URJC: {_im.size}, {_im.mode} en {_found[0]}")
             else:
-                st.caption(f"Logo URJC NO encontrado en: {_logo.resolve()}")
+                st.caption(f"Logo URJC NO encontrado. app dir: {_app_dir}, cwd: {_pl.Path.cwd()}")
             pdf_bytes = generate_full_pdf(all_comps, comp_data, comps_by_cat, my_f1, my_f2, my_f3)
             st.download_button(
                 label="Descargar PDF",
@@ -909,12 +912,29 @@ class SkillsMapPDF:
         from fpdf import FPDF
 
         logo_dir = pathlib.Path(__file__).parent
+
+        # Find URJC logo - search in multiple possible locations
+        def _find_logo(name):
+            candidates = [
+                logo_dir / name,
+                pathlib.Path(name),
+                pathlib.Path(".") / name,
+                pathlib.Path("/mount/src") / name,
+            ]
+            # Also search common Streamlit Cloud paths
+            import glob
+            found = glob.glob(f"/mount/src/**/{name}", recursive=True)
+            candidates.extend([pathlib.Path(f) for f in found])
+            for p in candidates:
+                if p.exists() and p.stat().st_size > 100:
+                    return p
+            return None
         _font = ["Helvetica"]  # mutable default, updated after font registration
 
         # Pre-process URJC logo for header (resize if too large, ensure compatibility)
         _urjc_path = None
-        urjc_src = logo_dir / "logo-urjc.png"
-        if urjc_src.exists() and urjc_src.stat().st_size > 100:
+        urjc_src = _find_logo("logo-urjc.png")
+        if urjc_src:
             try:
                 from PIL import Image
                 import tempfile
@@ -941,8 +961,8 @@ class SkillsMapPDF:
                         self.image(_urjc_path, 10, 3, 18)
                     except Exception:
                         pass
-                digicom = logo_dir / "logo-DIGICOM-Lab-negativo-H.png"
-                if digicom.exists() and digicom.stat().st_size > 100:
+                digicom = _find_logo("logo-DIGICOM-Lab-negativo-H.png")
+                if digicom:
                     try:
                         self.image(str(digicom), 150, 3, 50)
                     except Exception:
