@@ -766,11 +766,11 @@ def render_my_chart():
     all_comps = get_competencias_flat()
     comps_by_cat = get_competencias_by_category()
     my_f1 = filter_my_data(get_fase1_data())
+    my_f2 = filter_my_data(get_fase2_data())
     my_f3 = filter_my_data(get_fase3_data())
 
-    # Gather all competencias selected by this student
-    comp_data = {}  # {code: {"v1": n, "v2": n, "empresas_v1": [], "empresas_v2": []}}
-
+    # Gather competencia data
+    comp_data = {}
     if my_f1 is not None and not my_f1.empty and "competencia_codigo" in my_f1.columns:
         for _, row in my_f1.iterrows():
             code = str(row.get("competencia_codigo", ""))
@@ -801,7 +801,6 @@ def render_my_chart():
     # ---- RADAR CHART ----
     import plotly.graph_objects as go
 
-    # Build radar data: each competencia is an axis, values = times selected
     codes = list(comp_data.keys())
     labels = [f"{c}\n{all_comps.get(c, '')[:25]}..." for c in codes]
     v1_values = [comp_data[c]["v1"] for c in codes]
@@ -809,27 +808,25 @@ def render_my_chart():
 
     fig = go.Figure()
     fig.add_trace(go.Scatterpolar(
-        r=v1_values + [v1_values[0]],  # close the polygon
-        theta=labels + [labels[0]],
+        r=v1_values + [v1_values[0]], theta=labels + [labels[0]],
         fill="toself", name="Fase 1 (pre-evento)",
         fillcolor="rgba(26,26,46,0.15)", line=dict(color="#1a1a2e", width=2)
     ))
     fig.add_trace(go.Scatterpolar(
-        r=v2_values + [v2_values[0]],
-        theta=labels + [labels[0]],
+        r=v2_values + [v2_values[0]], theta=labels + [labels[0]],
         fill="toself", name="Fase 3 (post-evento)",
         fillcolor="rgba(231,76,60,0.15)", line=dict(color="#e74c3c", width=2)
     ))
     max_val = max(max(v1_values, default=1), max(v2_values, default=1))
     fig.update_layout(
-        polar=dict(radialaxis=dict(visible=True, range=[0, max_val + 1], tickvals=list(range(max_val + 2)))),
+        polar=dict(radialaxis=dict(visible=True, range=[0, max_val + 1])),
         showlegend=True, legend=dict(orientation="h", y=-0.1),
         title="Competencias: antes vs después del evento",
         height=500, margin=dict(t=60, b=60, l=80, r=80)
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    # ---- Detail table ----
+    # Detail table
     st.markdown("### Detalle por competencia")
     for cat_key, cat in comps_by_cat.items():
         cat_codes = [c for c in comp_data if c.startswith(cat_key)]
@@ -843,12 +840,13 @@ def render_my_chart():
                 st.caption(f"  Fase 1: {d['v1']}x · Fase 3: {d['v2']}x · Empresas: {', '.join(emps)}")
             st.divider()
 
-    # ---- PDF download ----
-    st.markdown("### Descargar resumen en PDF")
+    # PDF download
+    st.markdown("### Descargar informe completo en PDF")
+    st.markdown("Incluye: análisis de empresas, conversaciones, competencias, reflexión y resumen comparativo.")
 
     if st.button("Generar y descargar PDF", type="primary", use_container_width=True):
         try:
-            pdf_bytes = generate_pdf(all_comps, comp_data, comps_by_cat)
+            pdf_bytes = generate_full_pdf(all_comps, comp_data, comps_by_cat, my_f1, my_f2, my_f3)
             st.download_button(
                 label="Descargar PDF",
                 data=pdf_bytes,
@@ -860,73 +858,249 @@ def render_my_chart():
             st.error(f"Error generando PDF: {e}")
 
 
-def generate_pdf(all_comps, comp_data, comps_by_cat):
-    """Generate a PDF summary using fpdf2."""
-    from fpdf import FPDF
+# ============================================
+# PDF GENERATION — Full report, DIGICOM Lab style
+# ============================================
+DARK_BLUE = (26, 26, 46)
+ACCENT_RED = (231, 76, 60)
+MEDIUM_BLUE = (44, 44, 84)
+LIGHT_BG = (248, 249, 250)
+WHITE = (255, 255, 255)
 
-    pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
 
-    pdf.set_font("Helvetica", "B", 18)
-    pdf.cell(0, 12, "Tech Connect 2026 - Skills Map", ln=True, align="C")
-    pdf.set_font("Helvetica", "", 11)
-    pdf.cell(0, 8, f"Estudiante: {st.session_state.student_name} (@{st.session_state.student_user})", ln=True, align="C")
-    pdf.cell(0, 8, f"Grupo: {st.session_state.student_group}", ln=True, align="C")
-    pdf.ln(10)
+class SkillsMapPDF:
+    def __init__(self):
+        from fpdf import FPDF
 
-    pdf.set_font("Helvetica", "B", 14)
-    pdf.cell(0, 10, "Mapa de competencias", ln=True)
-    pdf.ln(3)
+        logo_dir = pathlib.Path(__file__).parent
 
-    for cat_key, cat in comps_by_cat.items():
-        cat_codes = [c for c in comp_data if c.startswith(cat_key)]
-        if cat_codes:
-            pdf.set_font("Helvetica", "B", 12)
-            pdf.cell(0, 8, cat["label"], ln=True)
-            for code in cat_codes:
-                d = comp_data[code]
-                desc = all_comps.get(code, "")
-                emps = list(set(d["empresas_v1"] + d["empresas_v2"]))
-                pdf.set_font("Helvetica", "B", 10)
-                pdf.cell(0, 6, f"  {code}", ln=True)
-                pdf.set_font("Helvetica", "", 9)
-                pdf.multi_cell(0, 5, f"    {desc}")
-                pdf.cell(0, 5, f"    Fase 1: {d['v1']}x | Fase 3: {d['v2']}x | Empresas: {', '.join(emps)}", ln=True)
-                pdf.ln(2)
-            pdf.ln(3)
+        class PDF(FPDF):
+            def header(self):
+                self.set_fill_color(*DARK_BLUE)
+                self.rect(0, 0, 210, 22, "F")
+                # Logos
+                urjc = logo_dir / "logo-urjc.png"
+                digicom = logo_dir / "logo-DIGICOM-Lab-negativo-H.png"
+                if urjc.exists() and urjc.stat().st_size > 100:
+                    try:
+                        self.image(str(urjc), 10, 3, 30)
+                    except Exception:
+                        pass
+                if digicom.exists() and digicom.stat().st_size > 100:
+                    try:
+                        self.image(str(digicom), 150, 3, 50)
+                    except Exception:
+                        pass
+                self.set_y(5)
+                self.set_font("Helvetica", "B", 10)
+                self.set_text_color(*WHITE)
+                self.cell(0, 5, "TECH CONNECT 2026 — Skills Map", align="C", ln=True)
+                self.set_font("Helvetica", "", 7)
+                self.cell(0, 4, "DIGICOM Lab · Grado en Comunicación Digital · URJC", align="C", ln=True)
+                self.set_y(26)
+                self.set_text_color(0, 0, 0)
 
-    my_f3 = filter_my_data(get_fase3_data())
+            def footer(self):
+                self.set_y(-15)
+                self.set_draw_color(*DARK_BLUE)
+                self.line(10, self.get_y(), 200, self.get_y())
+                self.ln(2)
+                self.set_font("Helvetica", "", 6.5)
+                self.set_text_color(120, 120, 120)
+                self.cell(0, 4,
+                    "2026 — Grado en Comunicación Digital (URJC) | Diseño y desarrollo: Grupo Ciberimaginario",
+                    align="C", ln=True)
+                self.set_font("Helvetica", "", 6)
+                self.cell(0, 4, f"Página {self.page_no()}/{{nb}}", align="C")
+
+        self.pdf = PDF()
+        self.pdf.alias_nb_pages()
+        self.pdf.set_auto_page_break(auto=True, margin=20)
+
+    def add_cover(self, name, user, group):
+        self.pdf.add_page()
+        self.pdf.ln(20)
+        self.pdf.set_font("Helvetica", "B", 28)
+        self.pdf.set_text_color(*DARK_BLUE)
+        self.pdf.cell(0, 15, "Skills Map", ln=True, align="C")
+        self.pdf.set_font("Helvetica", "", 14)
+        self.pdf.set_text_color(*MEDIUM_BLUE)
+        self.pdf.cell(0, 8, "Informe personal de competencias", ln=True, align="C")
+        self.pdf.ln(15)
+        self.pdf.set_fill_color(*LIGHT_BG)
+        self.pdf.set_draw_color(*DARK_BLUE)
+        x = 50
+        self.pdf.rect(x, self.pdf.get_y(), 110, 30, "FD")
+        self.pdf.set_xy(x + 5, self.pdf.get_y() + 5)
+        self.pdf.set_font("Helvetica", "B", 14)
+        self.pdf.set_text_color(*DARK_BLUE)
+        self.pdf.cell(100, 7, name, align="C", ln=True)
+        self.pdf.set_x(x + 5)
+        self.pdf.set_font("Helvetica", "", 10)
+        self.pdf.set_text_color(100, 100, 100)
+        self.pdf.cell(100, 6, f"@{user} · Grupo {group}", align="C", ln=True)
+        self.pdf.ln(25)
+        self.pdf.set_font("Helvetica", "", 10)
+        self.pdf.set_text_color(80, 80, 80)
+        self.pdf.cell(0, 6, "Tech Connect 2026 · Lunes 2 de marzo · Campus de Fuenlabrada · URJC", align="C", ln=True)
+
+    def section_title(self, title, phase_tag=None):
+        self.pdf.ln(5)
+        self.pdf.set_fill_color(*DARK_BLUE)
+        self.pdf.rect(10, self.pdf.get_y(), 190, 8, "F")
+        self.pdf.set_font("Helvetica", "B", 11)
+        self.pdf.set_text_color(*WHITE)
+        label = f"  {phase_tag} — {title}" if phase_tag else f"  {title}"
+        self.pdf.cell(0, 8, label, ln=True)
+        self.pdf.set_text_color(0, 0, 0)
+        self.pdf.ln(3)
+
+    def empresa_title(self, name):
+        self.pdf.set_font("Helvetica", "B", 11)
+        self.pdf.set_text_color(*DARK_BLUE)
+        self.pdf.cell(0, 7, name, ln=True)
+        self.pdf.ln(1)
+
+    def field(self, label, value):
+        if not value:
+            return
+        self.pdf.set_font("Helvetica", "B", 9)
+        self.pdf.set_text_color(*DARK_BLUE)
+        self.pdf.cell(0, 5, label + ":", ln=True)
+        self.pdf.set_font("Helvetica", "", 8.5)
+        self.pdf.set_text_color(60, 60, 60)
+        self.pdf.multi_cell(0, 4.5, "  " + str(value))
+        self.pdf.ln(1.5)
+
+    def competencia(self, code, desc, extra=""):
+        self.pdf.set_font("Helvetica", "B", 8.5)
+        self.pdf.set_text_color(*MEDIUM_BLUE)
+        self.pdf.cell(0, 5, f"  {code}", ln=True)
+        self.pdf.set_font("Helvetica", "", 8)
+        self.pdf.set_text_color(80, 80, 80)
+        if desc:
+            self.pdf.multi_cell(0, 4, f"    {desc}")
+        if extra:
+            self.pdf.set_font("Helvetica", "I", 7.5)
+            self.pdf.multi_cell(0, 4, f"    {extra}")
+        self.pdf.ln(1)
+
+    def separator(self):
+        self.pdf.set_draw_color(200, 200, 200)
+        self.pdf.line(10, self.pdf.get_y(), 200, self.pdf.get_y())
+        self.pdf.ln(3)
+
+    def output(self):
+        return bytes(self.pdf.output())
+
+
+def generate_full_pdf(all_comps, comp_data, comps_by_cat, my_f1, my_f2, my_f3):
+    doc = SkillsMapPDF()
+
+    # COVER
+    doc.add_cover(st.session_state.student_name, st.session_state.student_user,
+                  st.session_state.student_group)
+
+    # FASE 1
+    if my_f1 is not None and not my_f1.empty and "empresa_nombre" in my_f1.columns:
+        doc.pdf.add_page()
+        doc.section_title("Análisis de empresas y mapeo de competencias", "FASE 1")
+        for emp in my_f1["empresa_nombre"].unique():
+            emp_data = my_f1[my_f1["empresa_nombre"] == emp]
+            first = emp_data.iloc[0]
+            doc.empresa_title(emp)
+            doc.field("Actividad principal", first.get("actividad_principal", ""))
+            doc.field("Presencia digital", first.get("presencia_digital", ""))
+            doc.field("Perfiles que necesitan", first.get("perfiles_necesitan", ""))
+            if "competencia_codigo" in emp_data.columns:
+                doc.pdf.set_font("Helvetica", "B", 9)
+                doc.pdf.set_text_color(*DARK_BLUE)
+                doc.pdf.cell(0, 5, "Competencias mapeadas (v1):", ln=True)
+                for _, row in emp_data.iterrows():
+                    code = str(row.get("competencia_codigo", ""))
+                    desc = all_comps.get(code, "")
+                    nivel = row.get("competencia_nivel", "")
+                    justif = row.get("competencia_justificacion", "")
+                    extra = f"Nivel: {nivel}" + (f" · {justif}" if justif else "")
+                    doc.competencia(code, desc, extra)
+            doc.pdf.ln(2)
+            doc.separator()
+
+    # FASE 2
+    if my_f2 is not None and not my_f2.empty:
+        doc.pdf.add_page()
+        doc.section_title("Registros de conversaciones", "FASE 2")
+        for _, row in my_f2.iterrows():
+            doc.empresa_title(row.get("empresa_nombre", ""))
+            persona = row.get("persona_contacto", "")
+            cargo = row.get("cargo_contacto", "")
+            if persona:
+                doc.field("Contacto", f"{persona}" + (f" ({cargo})" if cargo else ""))
+            for label, key in [("Qué hacen en digital", "que_hacen_digital"),
+                               ("Perfiles que buscan", "perfiles_buscan"),
+                               ("Habilidades técnicas", "habilidades_tecnicas"),
+                               ("Competencias blandas", "competencias_blandas"),
+                               ("Gap universidad", "gap_universidad"),
+                               ("Consejo", "consejo")]:
+                doc.field(label, row.get(key, ""))
+            doc.pdf.ln(2)
+            doc.separator()
+
+    # FASE 3 — Competencias v2
+    if my_f3 is not None and not my_f3.empty and "empresa_nombre" in my_f3.columns:
+        comp_rows = my_f3[my_f3["empresa_nombre"] != "REFLEXION_GENERAL"]
+        if not comp_rows.empty:
+            doc.pdf.add_page()
+            doc.section_title("Competencias revisadas (post-evento)", "FASE 3")
+            for emp in comp_rows["empresa_nombre"].unique():
+                doc.empresa_title(emp)
+                for _, row in comp_rows[comp_rows["empresa_nombre"] == emp].iterrows():
+                    code = str(row.get("competencia_codigo", ""))
+                    desc = all_comps.get(code, "")
+                    nivel = row.get("competencia_nivel_v2", "")
+                    justif = row.get("competencia_justificacion_v2", "")
+                    cambio = row.get("cambio_vs_v1", "")
+                    extra = f"Nivel: {nivel} · {cambio}" + (f" · {justif}" if justif else "")
+                    doc.competencia(code, desc, extra)
+                doc.pdf.ln(2)
+                doc.separator()
+
+    # RESUMEN COMPARATIVO
+    if comp_data:
+        doc.pdf.add_page()
+        doc.section_title("Mapa de competencias — Resumen comparativo", "ANÁLISIS")
+        for cat_key, cat in comps_by_cat.items():
+            cat_codes = [c for c in comp_data if c.startswith(cat_key)]
+            if cat_codes:
+                doc.pdf.set_font("Helvetica", "B", 10)
+                doc.pdf.set_text_color(*MEDIUM_BLUE)
+                doc.pdf.cell(0, 6, cat["label"], ln=True)
+                doc.pdf.ln(1)
+                for code in cat_codes:
+                    d = comp_data[code]
+                    desc = all_comps.get(code, "")
+                    emps = list(set(d["empresas_v1"] + d["empresas_v2"]))
+                    extra = f"Fase 1: {d['v1']}x | Fase 3: {d['v2']}x | Empresas: {', '.join(emps)}"
+                    doc.competencia(code, desc, extra)
+                doc.pdf.ln(2)
+
+    # REFLEXIÓN FINAL
     if my_f3 is not None and not my_f3.empty and "empresa_nombre" in my_f3.columns:
         ref = my_f3[my_f3["empresa_nombre"] == "REFLEXION_GENERAL"]
         if not ref.empty:
+            doc.pdf.add_page()
+            doc.section_title("Reflexión final", "CONCLUSIONES")
             last = ref.iloc[-1]
-            pdf.set_font("Helvetica", "B", 14)
-            pdf.cell(0, 10, "Reflexion final", ln=True)
-            pdf.ln(3)
-            for label, key in [("Competencias mas demandadas", "competencias_mas_demandadas"),
+            for label, key in [("Competencias más demandadas", "competencias_mas_demandadas"),
                                ("Gap universidad-empresa", "gap_uni_empresa"),
                                ("Posicionamiento profesional", "posicionamiento_personal"),
-                               ("Accion principal", "plan_accion"),
-                               ("Valoracion", "valoracion_experiencia")]:
-                val = str(last.get(key, "") or "")
-                if val:
-                    pdf.set_font("Helvetica", "B", 10)
-                    pdf.cell(0, 6, label + ":", ln=True)
-                    pdf.set_font("Helvetica", "", 9)
-                    pdf.multi_cell(0, 5, f"  {val}")
-                    pdf.ln(2)
+                               ("Acción principal", "plan_accion"),
+                               ("Valoración de la experiencia", "valoracion_experiencia")]:
+                doc.field(label, last.get(key, ""))
 
-    pdf.ln(10)
-    pdf.set_font("Helvetica", "I", 8)
-    pdf.cell(0, 5, "DIGICOM Lab - Grado en Comunicacion Digital - URJC - Ciberimaginario", ln=True, align="C")
-
-    return bytes(pdf.output())
+    return doc.output()
 
 
-# ============================================
-# STUDENT HOME
-# ============================================
 def render_student_home():
     st.markdown(logo_html(width=180, center=False, margin_bottom="0.5rem"), unsafe_allow_html=True)
     st.markdown(f"### Hola, {st.session_state.student_name}")
