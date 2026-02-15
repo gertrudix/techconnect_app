@@ -873,12 +873,12 @@ class SkillsMapPDF:
         from fpdf import FPDF
 
         logo_dir = pathlib.Path(__file__).parent
+        _font = ["Helvetica"]  # mutable default, updated after font registration
 
         class PDF(FPDF):
             def header(self):
                 self.set_fill_color(*DARK_BLUE)
                 self.rect(0, 0, 210, 22, "F")
-                # Logos
                 urjc = logo_dir / "logo-urjc.png"
                 digicom = logo_dir / "logo-DIGICOM-Lab-negativo-H.png"
                 if urjc.exists() and urjc.stat().st_size > 100:
@@ -892,11 +892,11 @@ class SkillsMapPDF:
                     except Exception:
                         pass
                 self.set_y(5)
-                self.set_font("Helvetica", "B", 10)
+                self.set_font(_font[0], "B", 10)
                 self.set_text_color(*WHITE)
-                self.cell(0, 5, "TECH CONNECT 2026 — Skills Map", align="C", ln=True)
-                self.set_font("Helvetica", "", 7)
-                self.cell(0, 4, "DIGICOM Lab · Grado en Comunicación Digital · URJC", align="C", ln=True)
+                self.cell(0, 5, "TECH CONNECT 2026 - Skills Map", align="C", ln=True)
+                self.set_font(_font[0], "", 7)
+                self.cell(0, 4, "DIGICOM Lab - Grado en Comunicacion Digital - URJC", align="C", ln=True)
                 self.set_y(26)
                 self.set_text_color(0, 0, 0)
 
@@ -905,25 +905,34 @@ class SkillsMapPDF:
                 self.set_draw_color(*DARK_BLUE)
                 self.line(10, self.get_y(), 200, self.get_y())
                 self.ln(2)
-                self.set_font("Helvetica", "", 6.5)
+                self.set_font(_font[0], "", 6.5)
                 self.set_text_color(120, 120, 120)
                 self.cell(0, 4,
-                    "2026 — Grado en Comunicación Digital (URJC) | Diseño y desarrollo: Grupo Ciberimaginario",
+                    "2026 - Grado en Comunicacion Digital (URJC) | Diseno y desarrollo: Grupo Ciberimaginario",
                     align="C", ln=True)
-                self.set_font("Helvetica", "", 6)
-                self.cell(0, 4, f"Página {self.page_no()}/{{nb}}", align="C")
+                self.set_font(_font[0], "", 6)
+                self.cell(0, 4, f"Pagina {self.page_no()}/{{nb}}", align="C")
 
         self.pdf = PDF()
+        try:
+            self.pdf.add_font("DejaVu", "", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
+            self.pdf.add_font("DejaVu", "B", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+            self.pdf.add_font("DejaVu", "I", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf")
+            self.pdf.add_font("DejaVu", "BI", "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf")
+            _font[0] = "DejaVu"
+            self.F = "DejaVu"
+        except Exception:
+            self.F = "Helvetica"
         self.pdf.alias_nb_pages()
         self.pdf.set_auto_page_break(auto=True, margin=20)
 
     def add_cover(self, name, user, group):
         self.pdf.add_page()
         self.pdf.ln(20)
-        self.pdf.set_font("Helvetica", "B", 28)
+        self.pdf.set_font(self.F, "B", 28)
         self.pdf.set_text_color(*DARK_BLUE)
         self.pdf.cell(0, 15, "Skills Map", ln=True, align="C")
-        self.pdf.set_font("Helvetica", "", 14)
+        self.pdf.set_font(self.F, "", 14)
         self.pdf.set_text_color(*MEDIUM_BLUE)
         self.pdf.cell(0, 8, "Informe personal de competencias", ln=True, align="C")
         self.pdf.ln(15)
@@ -932,15 +941,15 @@ class SkillsMapPDF:
         x = 50
         self.pdf.rect(x, self.pdf.get_y(), 110, 30, "FD")
         self.pdf.set_xy(x + 5, self.pdf.get_y() + 5)
-        self.pdf.set_font("Helvetica", "B", 14)
+        self.pdf.set_font(self.F, "B", 14)
         self.pdf.set_text_color(*DARK_BLUE)
         self.pdf.cell(100, 7, name, align="C", ln=True)
         self.pdf.set_x(x + 5)
-        self.pdf.set_font("Helvetica", "", 10)
+        self.pdf.set_font(self.F, "", 10)
         self.pdf.set_text_color(100, 100, 100)
         self.pdf.cell(100, 6, f"@{user} · Grupo {group}", align="C", ln=True)
         self.pdf.ln(25)
-        self.pdf.set_font("Helvetica", "", 10)
+        self.pdf.set_font(self.F, "", 10)
         self.pdf.set_text_color(80, 80, 80)
         self.pdf.cell(0, 6, "Tech Connect 2026 · Lunes 2 de marzo · Campus de Fuenlabrada · URJC", align="C", ln=True)
 
@@ -948,7 +957,7 @@ class SkillsMapPDF:
         self.pdf.ln(5)
         self.pdf.set_fill_color(*DARK_BLUE)
         self.pdf.rect(10, self.pdf.get_y(), 190, 8, "F")
-        self.pdf.set_font("Helvetica", "B", 11)
+        self.pdf.set_font(self.F, "B", 11)
         self.pdf.set_text_color(*WHITE)
         label = f"  {phase_tag} — {title}" if phase_tag else f"  {title}"
         self.pdf.cell(0, 8, label, ln=True)
@@ -956,7 +965,7 @@ class SkillsMapPDF:
         self.pdf.ln(3)
 
     def empresa_title(self, name):
-        self.pdf.set_font("Helvetica", "B", 11)
+        self.pdf.set_font(self.F, "B", 11)
         self.pdf.set_text_color(*DARK_BLUE)
         self.pdf.cell(0, 7, name, ln=True)
         self.pdf.ln(1)
@@ -964,24 +973,24 @@ class SkillsMapPDF:
     def field(self, label, value):
         if not value:
             return
-        self.pdf.set_font("Helvetica", "B", 9)
+        self.pdf.set_font(self.F, "B", 9)
         self.pdf.set_text_color(*DARK_BLUE)
         self.pdf.cell(0, 5, label + ":", ln=True)
-        self.pdf.set_font("Helvetica", "", 8.5)
+        self.pdf.set_font(self.F, "", 8.5)
         self.pdf.set_text_color(60, 60, 60)
         self.pdf.multi_cell(0, 4.5, "  " + str(value))
         self.pdf.ln(1.5)
 
     def competencia(self, code, desc, extra=""):
-        self.pdf.set_font("Helvetica", "B", 8.5)
+        self.pdf.set_font(self.F, "B", 8.5)
         self.pdf.set_text_color(*MEDIUM_BLUE)
         self.pdf.cell(0, 5, f"  {code}", ln=True)
-        self.pdf.set_font("Helvetica", "", 8)
+        self.pdf.set_font(self.F, "", 8)
         self.pdf.set_text_color(80, 80, 80)
         if desc:
             self.pdf.multi_cell(0, 4, f"    {desc}")
         if extra:
-            self.pdf.set_font("Helvetica", "I", 7.5)
+            self.pdf.set_font(self.F, "I", 7.5)
             self.pdf.multi_cell(0, 4, f"    {extra}")
         self.pdf.ln(1)
 
@@ -1013,7 +1022,7 @@ def generate_full_pdf(all_comps, comp_data, comps_by_cat, my_f1, my_f2, my_f3):
             doc.field("Presencia digital", first.get("presencia_digital", ""))
             doc.field("Perfiles que necesitan", first.get("perfiles_necesitan", ""))
             if "competencia_codigo" in emp_data.columns:
-                doc.pdf.set_font("Helvetica", "B", 9)
+                doc.pdf.set_font(doc.F, "B", 9)
                 doc.pdf.set_text_color(*DARK_BLUE)
                 doc.pdf.cell(0, 5, "Competencias mapeadas (v1):", ln=True)
                 for _, row in emp_data.iterrows():
@@ -1072,7 +1081,7 @@ def generate_full_pdf(all_comps, comp_data, comps_by_cat, my_f1, my_f2, my_f3):
         for cat_key, cat in comps_by_cat.items():
             cat_codes = [c for c in comp_data if c.startswith(cat_key)]
             if cat_codes:
-                doc.pdf.set_font("Helvetica", "B", 10)
+                doc.pdf.set_font(doc.F, "B", 10)
                 doc.pdf.set_text_color(*MEDIUM_BLUE)
                 doc.pdf.cell(0, 6, cat["label"], ln=True)
                 doc.pdf.ln(1)
