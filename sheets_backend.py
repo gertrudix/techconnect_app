@@ -1,7 +1,7 @@
 """
 Google Sheets backend for TechConnect Skills Map.
 Handles all read/write operations with Google Sheets.
-Includes retry logic, caching and user authentication.
+Includes retry logic, caching, user authentication, and edit support.
 """
 
 import json
@@ -35,7 +35,6 @@ SCOPES = [
 
 @st.cache_resource(ttl=300)
 def get_gspread_client():
-    """Initialize gspread client from Streamlit secrets."""
     creds_dict = st.secrets["gcp_service_account"]
     if isinstance(creds_dict, str):
         creds_dict = json.loads(creds_dict)
@@ -47,7 +46,6 @@ def get_gspread_client():
 
 @st.cache_resource(ttl=60)
 def get_spreadsheet():
-    """Get the main spreadsheet (cached 60s to avoid rate limits)."""
     client = get_gspread_client()
     spreadsheet_url = st.secrets.get("spreadsheet_url", None)
     spreadsheet_key = st.secrets.get("spreadsheet_key", None)
@@ -98,6 +96,39 @@ def safe_read(ws, max_retries=3):
                 raise e
 
 
+def delete_rows_matching(ws, col_checks, max_retries=2):
+    """
+    Delete all rows matching given column value pairs.
+    col_checks = [(col_index_1based, value), ...]
+    Deletes from bottom to top to avoid row shift issues.
+    """
+    for attempt in range(max_retries):
+        try:
+            all_values = ws.get_all_values()
+            rows_to_delete = []
+            for i, row in enumerate(all_values):
+                if i == 0:  # skip header
+                    continue
+                match = True
+                for col_idx, val in col_checks:
+                    if col_idx - 1 < len(row) and str(row[col_idx - 1]).strip().lower() != str(val).strip().lower():
+                        match = False
+                        break
+                if match:
+                    rows_to_delete.append(i + 1)  # 1-based row number
+
+            # Delete from bottom to top
+            for row_num in sorted(rows_to_delete, reverse=True):
+                ws.delete_rows(row_num)
+                time.sleep(0.3)  # Small delay to avoid rate limits
+            return len(rows_to_delete)
+        except APIError as e:
+            if attempt < max_retries - 1:
+                time.sleep(2 + attempt * 3)
+            else:
+                raise e
+
+
 # ============================================
 # INITIALIZATION
 # ============================================
@@ -106,12 +137,10 @@ def init_spreadsheet():
     ss = get_spreadsheet()
     existing = [ws.title for ws in ss.worksheets()]
 
-    # Usuarios sheet
     if SHEET_USUARIOS not in existing:
         ws = ss.add_worksheet(title=SHEET_USUARIOS, rows=200, cols=4)
         ws.append_row(["usuario", "password", "nombre", "grupo"])
 
-    # Competencias sheet
     if SHEET_COMPETENCIAS not in existing:
         ws = ss.add_worksheet(title=SHEET_COMPETENCIAS, rows=100, cols=3)
         ws.append_row(["codigo", "categoria", "descripcion"])
@@ -164,7 +193,6 @@ def init_spreadsheet():
 
 @st.cache_data(ttl=15)
 def get_usuarios():
-    """Get all users (cached 15s)."""
     ss = get_spreadsheet()
     try:
         ws = ss.worksheet(SHEET_USUARIOS)
@@ -174,9 +202,6 @@ def get_usuarios():
 
 
 def authenticate_student(usuario, password):
-    """
-    Authenticate a student. Returns dict with user data or None.
-    """
     usuarios = get_usuarios()
     for u in usuarios:
         if str(u.get("usuario", "")).strip().lower() == usuario.strip().lower() and \
@@ -190,7 +215,6 @@ def authenticate_student(usuario, password):
 
 
 def add_usuario(usuario, password, nombre, grupo):
-    """Add a single user."""
     ss = get_spreadsheet()
     ws = ss.worksheet(SHEET_USUARIOS)
     safe_append_row(ws, [usuario, password, nombre, grupo])
@@ -198,7 +222,6 @@ def add_usuario(usuario, password, nombre, grupo):
 
 
 def add_usuarios_bulk(rows):
-    """Add multiple users at once. rows = list of [usuario, password, nombre, grupo]."""
     ss = get_spreadsheet()
     ws = ss.worksheet(SHEET_USUARIOS)
     safe_append_rows(ws, rows)
@@ -206,7 +229,6 @@ def add_usuarios_bulk(rows):
 
 
 def delete_usuario(usuario):
-    """Delete a user by username."""
     ss = get_spreadsheet()
     ws = ss.worksheet(SHEET_USUARIOS)
     try:
@@ -307,9 +329,14 @@ def add_empresa(empresa_data):
 # ============================================
 
 def save_fase1(usuario, nombre, grupo, empresa_id, empresa_nombre, analisis, competencias_list):
+    """Save Fase 1 data. Deletes previous entry for same usuario+empresa first (edit support)."""
     ss = get_spreadsheet()
     ws = ss.worksheet(SHEET_FASE1)
     ts = datetime.now().isoformat()
+
+    # Delete previous entries for this usuario + empresa
+    # Col 2 = usuario, Col 6 = empresa_nombre
+    delete_rows_matching(ws, [(2, usuario), (6, empresa_nombre)])
 
     rows = []
     for comp in competencias_list:
@@ -346,13 +373,20 @@ def get_fase1_data():
 # ============================================
 
 def save_fase2(usuario, nombre, grupo, registro):
+    """Save Fase 2 data. Deletes previous entry for same usuario+empresa first (edit support)."""
     ss = get_spreadsheet()
     ws = ss.worksheet(SHEET_FASE2)
     ts = datetime.now().isoformat()
 
+    empresa = registro.get("empresa_nombre", "")
+    # Delete previous entries for this usuario + empresa
+    # Col 2 = usuario, Col 5 = empresa_nombre
+    if empresa:
+        delete_rows_matching(ws, [(2, usuario), (5, empresa)])
+
     safe_append_row(ws, [
         ts, usuario, nombre, grupo,
-        registro.get("empresa_nombre", ""),
+        empresa,
         registro.get("persona_contacto", ""),
         registro.get("cargo_contacto", ""),
         registro.get("contacto_linkedin", ""),
@@ -386,9 +420,14 @@ def get_fase2_data():
 # ============================================
 
 def save_fase3_competencias(usuario, nombre, grupo, empresa_nombre, competencias_v2):
+    """Save Fase 3 competencias. Deletes previous for same usuario+empresa (edit support)."""
     ss = get_spreadsheet()
     ws = ss.worksheet(SHEET_FASE3)
     ts = datetime.now().isoformat()
+
+    # Delete previous competencia entries (not REFLEXION_GENERAL) for this usuario+empresa
+    # Col 2 = usuario, Col 5 = empresa_nombre
+    delete_rows_matching(ws, [(2, usuario), (5, empresa_nombre)])
 
     rows = []
     for comp in competencias_v2:
@@ -409,9 +448,14 @@ def save_fase3_competencias(usuario, nombre, grupo, empresa_nombre, competencias
 
 
 def save_fase3_reflexion(usuario, nombre, grupo, reflexion):
+    """Save Fase 3 reflexion. Deletes previous reflexion for same usuario (edit support)."""
     ss = get_spreadsheet()
     ws = ss.worksheet(SHEET_FASE3)
     ts = datetime.now().isoformat()
+
+    # Delete previous REFLEXION_GENERAL for this usuario
+    # Col 2 = usuario, Col 5 = empresa_nombre (= REFLEXION_GENERAL)
+    delete_rows_matching(ws, [(2, usuario), (5, "REFLEXION_GENERAL")])
 
     safe_append_row(ws, [
         ts, usuario, nombre, grupo, "REFLEXION_GENERAL",

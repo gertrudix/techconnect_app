@@ -395,17 +395,56 @@ def render_fase1():
 
     st.subheader(f"Análisis de: {empresa_nombre}")
 
+    # Load existing data for pre-population (edit support)
+    prev_actividad = ""
+    prev_presencia = ""
+    prev_canales = []
+    prev_perfiles = ""
+    prev_comps_by_cat = {}  # {cat_key: {"codigo", "justificacion", "nivel"}}
+    my_f1_edit = filter_my_data(get_fase1_data())
+    if my_f1_edit is not None and not my_f1_edit.empty and "empresa_nombre" in my_f1_edit.columns:
+        emp_prev = my_f1_edit[my_f1_edit["empresa_nombre"] == empresa_nombre]
+        if not emp_prev.empty:
+            first = emp_prev.iloc[0]
+            prev_actividad = str(first.get("actividad_principal", "")) if first.get("actividad_principal") else ""
+            raw_presencia = str(first.get("presencia_digital", "")) if first.get("presencia_digital") else ""
+            # Parse canales from "Canales: x, y. notes"
+            if raw_presencia.startswith("Canales:"):
+                parts = raw_presencia.split(".", 1)
+                canal_str = parts[0].replace("Canales:", "").strip()
+                prev_canales = [c.strip() for c in canal_str.split(",") if c.strip() and c.strip() in CANALES_DIGITALES]
+                prev_presencia = parts[1].strip() if len(parts) > 1 else ""
+            else:
+                prev_presencia = raw_presencia
+            prev_perfiles = str(first.get("perfiles_necesitan", "")) if first.get("perfiles_necesitan") else ""
+            if "competencia_codigo" in emp_prev.columns:
+                for _, row in emp_prev.iterrows():
+                    code = str(row.get("competencia_codigo", ""))
+                    for cat_key in CATEGORIAS:
+                        if code.startswith(cat_key):
+                            prev_comps_by_cat[cat_key] = {
+                                "codigo": code,
+                                "justificacion": str(row.get("competencia_justificacion", "")) if row.get("competencia_justificacion") else "",
+                                "nivel": str(row.get("competencia_nivel", "")) if row.get("competencia_nivel") else "",
+                            }
+                            break
+            st.info("Ya tienes un análisis guardado para esta empresa. Puedes editarlo y volver a guardar.")
+
     with st.form(f"fase1_{empresa_id}"):
         st.markdown("**Actividad principal**")
         actividad = st.text_area("Describe su actividad, productos/servicios y propuesta de valor:",
+                                 value=prev_actividad,
                                  height=120, placeholder="Investiga en su web, LinkedIn, noticias...")
 
         st.markdown("**Presencia digital**")
-        canales = st.multiselect("Canales donde tiene presencia activa:", CANALES_DIGITALES)
-        presencia_notas = st.text_area("Observaciones sobre su presencia digital:", height=80)
+        canales = st.multiselect("Canales donde tiene presencia activa:", CANALES_DIGITALES,
+                                 default=prev_canales)
+        presencia_notas = st.text_area("Observaciones sobre su presencia digital:",
+                                       value=prev_presencia, height=80)
 
         st.markdown("**Perfiles profesionales que podrían necesitar**")
-        perfiles = st.text_area("Basándote en ofertas, estructura del equipo, proyectos:", height=100,
+        perfiles = st.text_area("Basándote en ofertas, estructura del equipo, proyectos:",
+                                value=prev_perfiles, height=100,
                                 placeholder="Ej: Community manager, analista de datos...")
 
         st.divider()
@@ -422,21 +461,39 @@ def render_fase1():
         for cat_key, cat in comps_by_cat.items():
             st.markdown(f"**{cat['label']}**")
             options_list = list(cat["items"].keys())
+
+            # Pre-select from previous data
+            prev = prev_comps_by_cat.get(cat_key)
+            default_idx = 0
+            if prev and prev["codigo"] in options_list:
+                default_idx = options_list.index(prev["codigo"]) + 1
+
             selected = st.selectbox(
                 f"Selecciona la más relevante:",
                 options=["(Ninguna)"] + options_list,
+                index=default_idx,
                 format_func=lambda x, c=cat: "(Ninguna)" if x == "(Ninguna)" else f"{x} — {c['items'].get(x, '')[:55]}...",
                 key=f"comp_{empresa_id}_{cat_key}"
             )
             if selected != "(Ninguna)":
+                # Pre-fill justification and nivel
+                prev_just = ""
+                prev_niv_idx = 0
+                if prev and prev["codigo"] == selected:
+                    prev_just = prev.get("justificacion", "")
+                    if prev.get("nivel") in NIVELES:
+                        prev_niv_idx = NIVELES.index(prev["nivel"])
+
                 col1, col2 = st.columns([3, 1])
                 with col1:
                     justif = st.text_input(
                         f"¿Por qué es relevante para {empresa_nombre}?",
+                        value=prev_just,
                         key=f"just_{empresa_id}_{selected}"
                     )
                 with col2:
-                    nivel = st.selectbox("Nivel", NIVELES, key=f"nivel_{empresa_id}_{selected}")
+                    nivel = st.selectbox("Nivel", NIVELES, index=prev_niv_idx,
+                                         key=f"nivel_{empresa_id}_{selected}")
                 comp_details.append({
                     "codigo": selected, "tipo": get_competencia_type(selected),
                     "justificacion": justif, "nivel": nivel,
@@ -529,40 +586,60 @@ def render_fase2():
         """)
 
     st.divider()
-    st.subheader("Registrar una conversación")
-    st.markdown("Completa esto **justo después** de hablar con cada empresa.")
+    st.subheader("Registrar o editar una conversación")
+    st.markdown("Completa esto **justo después** de hablar con cada empresa. Si ya registraste una conversación, selecciona la misma empresa para editarla.")
 
     empresas = get_empresas()
     empresa_options = [e["nombre"] for e in empresas] if empresas else []
 
-    with st.form("fase2_registro", clear_on_submit=True):
-        if empresa_options:
-            empresa_nombre = st.selectbox("Empresa con la que has hablado:",
-                                          ["(Otra no listada)"] + empresa_options)
-            if empresa_nombre == "(Otra no listada)":
-                empresa_nombre = st.text_input("Nombre:")
-        else:
-            empresa_nombre = st.text_input("Empresa con la que has hablado:")
+    # Select empresa (outside form so we can pre-populate)
+    if empresa_options:
+        empresa_nombre = st.selectbox("Empresa con la que has hablado:",
+                                      ["(Otra no listada)"] + empresa_options,
+                                      key="f2_empresa_sel")
+        if empresa_nombre == "(Otra no listada)":
+            empresa_nombre = st.text_input("Nombre:", key="f2_empresa_other")
+    else:
+        empresa_nombre = st.text_input("Empresa con la que has hablado:", key="f2_empresa_text")
 
+    # Load previous data for this empresa (edit support)
+    prev_f2 = {}
+    if empresa_nombre and empresa_nombre != "(Otra no listada)":
+        my_f2_edit = filter_my_data(get_fase2_data())
+        if my_f2_edit is not None and not my_f2_edit.empty and "empresa_nombre" in my_f2_edit.columns:
+            prev_rows = my_f2_edit[my_f2_edit["empresa_nombre"].astype(str).str.strip() == empresa_nombre.strip()]
+            if not prev_rows.empty:
+                prev_f2 = prev_rows.iloc[-1].to_dict()
+                st.info("Ya tienes un registro para esta empresa. Puedes editarlo y volver a guardar.")
+
+    with st.form("fase2_registro"):
         col1, col2 = st.columns(2)
         with col1:
-            persona = st.text_input("Persona con la que hablaste")
+            persona = st.text_input("Persona con la que hablaste",
+                                    value=str(prev_f2.get("persona_contacto", "")) if prev_f2 else "")
         with col2:
-            cargo = st.text_input("Su cargo / rol")
+            cargo = st.text_input("Su cargo / rol",
+                                  value=str(prev_f2.get("cargo_contacto", "")) if prev_f2 else "")
 
         st.divider()
         st.markdown("**Notas de la conversación**")
         st.caption("No hace falta que estén perfectas. Anota lo esencial mientras lo recuerdas.")
 
-        que_hacen = st.text_area("¿Qué hacen en digital (día a día)?", height=80)
-        perfiles = st.text_area("¿Qué perfiles buscan?", height=80)
+        que_hacen = st.text_area("¿Qué hacen en digital (día a día)?", height=80,
+                                 value=str(prev_f2.get("que_hacen_digital", "")) if prev_f2 else "")
+        perfiles = st.text_area("¿Qué perfiles buscan?", height=80,
+                                value=str(prev_f2.get("perfiles_buscan", "")) if prev_f2 else "")
         col1, col2 = st.columns(2)
         with col1:
-            hab_tecnicas = st.text_area("Habilidades técnicas que valoran", height=80)
+            hab_tecnicas = st.text_area("Habilidades técnicas que valoran", height=80,
+                                        value=str(prev_f2.get("habilidades_tecnicas", "")) if prev_f2 else "")
         with col2:
-            hab_blandas = st.text_area("Competencias blandas clave", height=80)
-        gap = st.text_area("Lo que echan en falta de la universidad", height=80)
-        consejo = st.text_area("Consejo que te dieron", height=60)
+            hab_blandas = st.text_area("Competencias blandas clave", height=80,
+                                       value=str(prev_f2.get("competencias_blandas", "")) if prev_f2 else "")
+        gap = st.text_area("Lo que echan en falta de la universidad", height=80,
+                           value=str(prev_f2.get("gap_universidad", "")) if prev_f2 else "")
+        consejo = st.text_area("Consejo que te dieron", height=60,
+                               value=str(prev_f2.get("consejo", "")) if prev_f2 else "")
 
         submitted = st.form_submit_button("Guardar registro", type="primary", use_container_width=True)
         if submitted:
@@ -789,22 +866,41 @@ def render_fase3():
 
     with tab_ref:
         st.subheader("Reflexión final")
+
+        # Load previous reflexion (edit support)
+        prev_ref = {}
+        my_f3_ref = filter_my_data(get_fase3_data())
+        if my_f3_ref is not None and not my_f3_ref.empty and "empresa_nombre" in my_f3_ref.columns:
+            ref_rows = my_f3_ref[my_f3_ref["empresa_nombre"] == "REFLEXION_GENERAL"]
+            if not ref_rows.empty:
+                prev_ref = ref_rows.iloc[-1].to_dict()
+                st.info("Ya tienes una reflexión guardada. Puedes editarla y volver a guardar.")
+
         with st.form("fase3_reflexion"):
             st.markdown("**Competencias más demandadas**")
-            comp_demandadas = st.text_area("¿Qué competencias aparecieron como relevantes en la mayoría de empresas? ¿Hay un patrón?", height=120)
+            comp_demandadas = st.text_area("¿Qué competencias aparecieron como relevantes en la mayoría de empresas? ¿Hay un patrón?",
+                                           value=str(prev_ref.get("competencias_mas_demandadas", "")) if prev_ref else "",
+                                           height=120)
 
             st.markdown("**El gap universidad-empresa**")
-            gap_text = st.text_area("¿Dónde ves el mayor desajuste entre lo que se enseña y lo que se necesita?", height=120)
+            gap_text = st.text_area("¿Dónde ves el mayor desajuste entre lo que se enseña y lo que se necesita?",
+                                    value=str(prev_ref.get("gap_uni_empresa", "")) if prev_ref else "",
+                                    height=120)
 
             st.divider()
             st.markdown("**Tu posicionamiento profesional**")
-            posicionamiento = st.text_area("¿Cómo definirías tu perfil? ¿Hacia qué tipo de empresa o rol te orientas?", height=120)
+            posicionamiento = st.text_area("¿Cómo definirías tu perfil? ¿Hacia qué tipo de empresa o rol te orientas?",
+                                           value=str(prev_ref.get("posicionamiento_personal", "")) if prev_ref else "",
+                                           height=120)
 
             st.markdown("**Tu acción principal**")
-            accion = st.text_input("¿Cuál es la acción más importante que vas a llevar a cabo tras el Tech Connect?")
+            accion = st.text_input("¿Cuál es la acción más importante que vas a llevar a cabo tras el Tech Connect?",
+                                   value=str(prev_ref.get("plan_accion", "")) if prev_ref else "")
 
             st.markdown("**Valoración de la experiencia**")
-            valoracion = st.text_area("¿Qué ha sido lo más valioso? ¿Qué harías diferente?", height=100)
+            valoracion = st.text_area("¿Qué ha sido lo más valioso? ¿Qué harías diferente?",
+                                      value=str(prev_ref.get("valoracion_experiencia", "")) if prev_ref else "",
+                                      height=100)
 
             if st.form_submit_button("Guardar reflexión final", type="primary", use_container_width=True):
                 reflexion = {
@@ -894,36 +990,37 @@ def render_help():
 
     st.markdown("### Fase 1 — Pre-evento")
     st.markdown("""
-    **Cuándo:** antes del Tech Connect (desde casa o en clase).
+    **Cuándo:** Antes del Tech Connect (a tu ritmo, desde casa o en clase).
 
     **Qué haces:**
     - Seleccionas una empresa de las que asistirán al evento.
     - Investigas su actividad, presencia digital y perfiles que podrían necesitar.
     - Mapeas las competencias del Grado que consideras más relevantes para trabajar con esa empresa: 
-      una competencia transversal, una de conocimiento teórico y una de habilidad práctica.
+      Eliges una competencia transversal, una de conocimiento teórico y una de habilidad práctica.
     - Justificas brevemente cada elección.
 
-    **Para qué sirve:** llegarás al evento habiendo hecho los deberes. Podrás hablar con las empresas 
-    con criterio y demostrar que te has preparado.
+    **Para qué sirve:** Llegarás al evento conociendo a las empresas, así que podrás hablar con los responsables 
+    con criterio y demostrar que te has preparado. Es tu primera oportunidad para conectarte con el sector profesional.
 
-    **Puedes repetirlo** con varias empresas si quieres.
+    **Repítelo** con varias empresas. Cuantas más, mejor preparado llegarás al Tech Connect.
     """)
 
     st.divider()
 
     st.markdown("### Fase 2 — Durante el evento")
     st.markdown("""
-    **Cuándo:** el día del Tech Connect, justo después de hablar con cada empresa.
+    **Cuándo:** El día del Tech Connect, justo después de hablar con cada empresa.
 
     **Qué haces:**
     - Registras la conversación que acabas de tener: con quién hablaste, su cargo, 
       qué hacen en digital, qué perfiles buscan, qué valoran, qué echan en falta de la universidad...
     - Anotas el consejo que te dieron.
 
-    **Para qué sirve:** capturar la información mientras la tienes fresca. Estos registros 
+    **Para qué sirve:** Te ayudará a capturar la información mientras la tienes reciente. Estos registros 
     son la base de tu reflexión posterior.
 
-    **Consejo:** no intentes que sea perfecto. Anota lo esencial en 2-3 minutos y pasa a la siguiente empresa.
+    **Consejo:** No intentes que sea perfecto. Anota lo esencial en no más de 5 minutos y pasa a la siguiente empresa.
+    Se agradecido con la atención y los consejos que te dan. 
     """)
 
     st.divider()
@@ -939,15 +1036,16 @@ def render_help():
     - Completas una reflexión final: competencias más demandadas, gap universidad-empresa, 
       tu posicionamiento profesional y tu acción principal.
 
-    **Para qué sirve:** cerrar el ciclo. Comparar lo que pensabas antes con lo que aprendiste 
-    y definir un paso concreto para tu desarrollo profesional.
+    **Para qué sirve:** Cerrar el ciclo. Comparar lo que pensabas antes con lo que aprendiste 
+    y definir un paso concreto para tu desarrollo profesional. Y sacar tus propias conclusiones para prepararte para tu
+    siguiente paso profesional. 
     """)
 
     st.divider()
 
     st.markdown("### Otros")
     st.markdown("""
-    **Mis respuestas guardadas:** desde el menú lateral puedes consultar en cualquier momento 
+    **Mis respuestas guardadas:** Desde el menú lateral puedes consultar en cualquier momento 
     todo lo que has registrado en las tres fases.
 
     **¿Puedo volver a una fase anterior?** Sí. Puedes ir y volver entre fases libremente. 
