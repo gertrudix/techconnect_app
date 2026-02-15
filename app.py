@@ -873,18 +873,6 @@ def render_my_chart():
 
     if st.button("Generar y descargar PDF", type="primary", use_container_width=True):
         try:
-            # Debug: show logo info
-            import pathlib as _pl, glob as _gl
-            _app_dir = _pl.Path(__file__).parent
-            _candidates = [_app_dir / "logo-urjc.png", _pl.Path("logo-urjc.png")]
-            _candidates += [_pl.Path(f) for f in _gl.glob("/mount/src/**/logo-urjc.png", recursive=True)]
-            _found = [str(p) for p in _candidates if p.exists()]
-            if _found:
-                from PIL import Image as _Im
-                _im = _Im.open(_found[0])
-                st.caption(f"Logo URJC: {_im.size}, {_im.mode} en {_found[0]}")
-            else:
-                st.caption(f"Logo URJC NO encontrado. app dir: {_app_dir}, cwd: {_pl.Path.cwd()}")
             pdf_bytes = generate_full_pdf(all_comps, comp_data, comps_by_cat, my_f1, my_f2, my_f3)
             st.download_button(
                 label="Descargar PDF",
