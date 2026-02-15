@@ -873,6 +873,15 @@ def render_my_chart():
 
     if st.button("Generar y descargar PDF", type="primary", use_container_width=True):
         try:
+            # Debug: show logo info
+            import pathlib as _pl
+            _logo = _pl.Path("logo-urjc.png")
+            if _logo.exists():
+                from PIL import Image as _Im
+                _im = _Im.open(str(_logo))
+                st.caption(f"Logo URJC encontrado: {_im.size}, modo: {_im.mode}, {_logo.stat().st_size} bytes")
+            else:
+                st.caption(f"Logo URJC NO encontrado en: {_logo.resolve()}")
             pdf_bytes = generate_full_pdf(all_comps, comp_data, comps_by_cat, my_f1, my_f2, my_f3)
             st.download_button(
                 label="Descargar PDF",
@@ -902,31 +911,34 @@ class SkillsMapPDF:
         logo_dir = pathlib.Path(__file__).parent
         _font = ["Helvetica"]  # mutable default, updated after font registration
 
-        # Pre-process URJC logo: replace black bg with header color so it blends
-        _urjc_tmp = None
+        # Pre-process URJC logo for header (resize if too large, ensure compatibility)
+        _urjc_path = None
         urjc_src = logo_dir / "logo-urjc.png"
         if urjc_src.exists() and urjc_src.stat().st_size > 100:
             try:
                 from PIL import Image
-                import numpy as np
                 import tempfile
-                arr = np.array(Image.open(str(urjc_src)).convert("RGB"))
-                black_mask = np.all(arr < 30, axis=2)
-                arr[black_mask] = [26, 26, 46]  # header color
+                im = Image.open(str(urjc_src))
+                # Resize if very large (fpdf2 can struggle with huge images at small display size)
+                if im.width > 500:
+                    ratio = 500 / im.width
+                    im = im.resize((500, int(im.height * ratio)), Image.LANCZOS)
+                # Ensure RGBA for transparency support
+                im = im.convert("RGBA")
                 tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                Image.fromarray(arr).save(tmp.name)
+                im.save(tmp.name, "PNG")
                 tmp.close()
-                _urjc_tmp = tmp.name
+                _urjc_path = tmp.name
             except Exception:
-                pass
+                _urjc_path = str(urjc_src)  # fallback to original
 
         class PDF(FPDF):
             def header(self):
                 self.set_fill_color(*DARK_BLUE)
                 self.rect(0, 0, 210, 22, "F")
-                if _urjc_tmp:
+                if _urjc_path:
                     try:
-                        self.image(_urjc_tmp, 10, 4, 16)
+                        self.image(_urjc_path, 10, 3, 18)
                     except Exception:
                         pass
                 digicom = logo_dir / "logo-DIGICOM-Lab-negativo-H.png"
