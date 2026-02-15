@@ -4,6 +4,7 @@ DIGICOM Lab · Grado en Comunicación Digital · Universidad Rey Juan Carlos
 """
 
 import base64
+import io
 import pathlib
 import streamlit as st
 from competencias import (
@@ -1020,39 +1021,46 @@ class SkillsMapPDF:
         self.pdf.set_font(self.F, "B", 11)
         self.pdf.set_text_color(*WHITE)
         label = f"  {phase_tag} — {title}" if phase_tag else f"  {title}"
-        self.pdf.cell(0, 8, label, ln=True)
+        self.pdf.multi_cell(190, 8, label)
         self.pdf.set_text_color(0, 0, 0)
         self.pdf.ln(3)
 
     def empresa_title(self, name):
+        self.pdf.set_x(10)
         self.pdf.set_font(self.F, "B", 11)
         self.pdf.set_text_color(*DARK_BLUE)
-        self.pdf.cell(0, 7, name, ln=True)
+        self.pdf.multi_cell(190, 7, name)
         self.pdf.ln(1)
 
     def field(self, label, value):
         if not value:
             return
+        self.pdf.set_x(10)
         self.pdf.set_font(self.F, "B", 9)
         self.pdf.set_text_color(*DARK_BLUE)
-        self.pdf.cell(0, 5, label + ":", ln=True)
+        self.pdf.multi_cell(190, 5, label + ":")
+        self.pdf.set_x(12)
         self.pdf.set_font(self.F, "", 8.5)
         self.pdf.set_text_color(60, 60, 60)
-        self.pdf.multi_cell(190, 4.5, "  " + str(value))
+        self.pdf.multi_cell(188, 4.5, str(value))
         self.pdf.ln(1.5)
 
     def competencia(self, code, desc, extra=""):
+        self.pdf.set_x(10)
         self.pdf.set_font(self.F, "B", 8.5)
         self.pdf.set_text_color(*MEDIUM_BLUE)
-        self.pdf.cell(0, 5, f"  {code}", ln=True)
-        self.pdf.set_font(self.F, "", 8)
-        self.pdf.set_text_color(80, 80, 80)
+        self.pdf.multi_cell(190, 5, f"  {code}")
         if desc:
-            self.pdf.multi_cell(190, 4, f"    {desc}")
+            self.pdf.set_x(14)
+            self.pdf.set_font(self.F, "", 8)
+            self.pdf.set_text_color(80, 80, 80)
+            self.pdf.multi_cell(186, 4, desc)
         if extra:
+            self.pdf.set_x(14)
             self.pdf.set_font(self.F, "I", 7.5)
-            self.pdf.multi_cell(190, 4, f"    {extra}")
-        self.pdf.ln(1)
+            self.pdf.set_text_color(120, 120, 120)
+            self.pdf.multi_cell(186, 4, extra)
+        self.pdf.ln(1.5)
 
     def separator(self):
         self.pdf.set_draw_color(200, 200, 200)
@@ -1080,36 +1088,45 @@ class SkillsMapPDF:
 
 
 def _generate_radar_png(all_comps, comp_data):
-    """Generate radar chart as PNG bytes for PDF. Returns None if kaleido unavailable."""
+    """Generate radar chart as PNG bytes using matplotlib (reliable on all platforms)."""
     try:
-        import plotly.graph_objects as go
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+        import numpy as np
 
         codes = list(comp_data.keys())
         if not codes:
             return None
-        labels = [f"{c} {all_comps.get(c, '')[:20]}..." for c in codes]
+
+        labels = [f"{c}\n{all_comps.get(c, '')[:22]}..." for c in codes]
         v1 = [comp_data[c]["v1"] for c in codes]
         v2 = [comp_data[c]["v2"] for c in codes]
 
-        fig = go.Figure()
-        fig.add_trace(go.Scatterpolar(
-            r=v1 + [v1[0]], theta=labels + [labels[0]],
-            fill="toself", name="Fase 1 (pre)",
-            fillcolor="rgba(26,26,46,0.15)", line=dict(color="#1a1a2e", width=2)
-        ))
-        fig.add_trace(go.Scatterpolar(
-            r=v2 + [v2[0]], theta=labels + [labels[0]],
-            fill="toself", name="Fase 3 (post)",
-            fillcolor="rgba(231,76,60,0.15)", line=dict(color="#e74c3c", width=2)
-        ))
+        N = len(codes)
+        angles = np.linspace(0, 2 * np.pi, N, endpoint=False).tolist()
+        angles += angles[:1]
+        v1_c = v1 + [v1[0]]
+        v2_c = v2 + [v2[0]]
+
+        fig, ax = plt.subplots(figsize=(8, 6), subplot_kw=dict(polar=True))
+        ax.fill(angles, v1_c, color="#1a1a2e", alpha=0.15)
+        ax.plot(angles, v1_c, color="#1a1a2e", linewidth=2, label="Fase 1 (pre-evento)")
+        ax.fill(angles, v2_c, color="#e74c3c", alpha=0.15)
+        ax.plot(angles, v2_c, color="#e74c3c", linewidth=2, label="Fase 3 (post-evento)")
+
+        ax.set_xticks(angles[:-1])
+        ax.set_xticklabels(labels, size=7)
         mx = max(max(v1, default=1), max(v2, default=1))
-        fig.update_layout(
-            polar=dict(radialaxis=dict(visible=True, range=[0, mx + 1])),
-            showlegend=True, legend=dict(orientation="h", y=-0.15),
-            title="Competencias: antes vs después del evento",
-            width=900, height=550, margin=dict(t=60, b=80, l=80, r=80)
-        )
-        return fig.to_image(format="png", scale=2, engine="kaleido")
+        ax.set_ylim(0, mx + 1)
+        ax.set_title("Competencias: antes vs después del evento", size=12, fontweight="bold", pad=20)
+        ax.legend(loc="lower center", bbox_to_anchor=(0.5, -0.15), ncol=2, fontsize=9)
+
+        buf = io.BytesIO()
+        fig.savefig(buf, format="png", dpi=150, bbox_inches="tight")
+        plt.close(fig)
+        buf.seek(0)
+        return buf.read()
     except Exception:
         return None
 
@@ -1135,7 +1152,8 @@ def generate_full_pdf(all_comps, comp_data, comps_by_cat, my_f1, my_f2, my_f3):
             if "competencia_codigo" in emp_data.columns:
                 doc.pdf.set_font(doc.F, "B", 9)
                 doc.pdf.set_text_color(*DARK_BLUE)
-                doc.pdf.cell(0, 5, "Competencias mapeadas (v1):", ln=True)
+                doc.pdf.set_x(10)
+                doc.pdf.multi_cell(190, 5, "Competencias mapeadas (v1):")
                 for _, row in emp_data.iterrows():
                     code = str(row.get("competencia_codigo", ""))
                     desc = all_comps.get(code, "")
@@ -1203,7 +1221,8 @@ def generate_full_pdf(all_comps, comp_data, comps_by_cat, my_f1, my_f2, my_f3):
             if cat_codes:
                 doc.pdf.set_font(doc.F, "B", 10)
                 doc.pdf.set_text_color(*MEDIUM_BLUE)
-                doc.pdf.cell(0, 6, cat["label"], ln=True)
+                doc.pdf.set_x(10)
+                doc.pdf.multi_cell(190, 6, cat["label"])
                 doc.pdf.ln(1)
                 for code in cat_codes:
                     d = comp_data[code]
