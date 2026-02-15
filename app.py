@@ -902,17 +902,34 @@ class SkillsMapPDF:
         logo_dir = pathlib.Path(__file__).parent
         _font = ["Helvetica"]  # mutable default, updated after font registration
 
+        # Pre-process URJC logo: remove black background for dark header
+        _urjc_tmp = None
+        urjc_src = logo_dir / "logo-urjc.png"
+        if urjc_src.exists() and urjc_src.stat().st_size > 100:
+            try:
+                from PIL import Image
+                import tempfile
+                im = Image.open(str(urjc_src)).convert("RGBA")
+                pixels = list(im.getdata())
+                new_px = [(0, 0, 0, 0) if (p[0] < 40 and p[1] < 40 and p[2] < 40) else p for p in pixels]
+                im.putdata(new_px)
+                tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                im.save(tmp.name)
+                tmp.close()
+                _urjc_tmp = tmp.name
+            except Exception:
+                pass
+
         class PDF(FPDF):
             def header(self):
                 self.set_fill_color(*DARK_BLUE)
                 self.rect(0, 0, 210, 22, "F")
-                urjc = logo_dir / "logo-urjc.png"
-                digicom = logo_dir / "logo-DIGICOM-Lab-negativo-H.png"
-                if urjc.exists() and urjc.stat().st_size > 100:
+                if _urjc_tmp:
                     try:
-                        self.image(str(urjc), 10, 4, 16)
+                        self.image(_urjc_tmp, 10, 4, 16)
                     except Exception:
                         pass
+                digicom = logo_dir / "logo-DIGICOM-Lab-negativo-H.png"
                 if digicom.exists() and digicom.stat().st_size > 100:
                     try:
                         self.image(str(digicom), 150, 3, 50)
