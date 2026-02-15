@@ -236,6 +236,9 @@ def render_student_nav():
         if st.button("Mis respuestas guardadas", use_container_width=True):
             st.session_state.current_phase = "my_responses"
             st.rerun()
+        if st.button("Ayuda", use_container_width=True):
+            st.session_state.current_phase = "help"
+            st.rerun()
 
         st.divider()
         if st.button("Cerrar sesión", use_container_width=True):
@@ -480,13 +483,20 @@ def render_fase2():
     my_f2 = filter_my_data(get_fase2_data())
     if my_f2 is not None and not my_f2.empty:
         n = len(my_f2)
-        with st.expander(f"Ya has registrado {n} conversación(es) — ver resumen"):
+        with st.expander(f"Ya has registrado {n} conversación(es) — ver detalle"):
             for _, row in my_f2.iterrows():
                 emp = row.get("empresa_nombre", "")
                 persona = row.get("persona_contacto", "")
-                st.markdown(f"**{emp}**" + (f" — {persona}" if persona else ""))
-                if row.get("que_hacen_digital", ""):
-                    st.caption(f"Digital: {str(row['que_hacen_digital'])[:80]}...")
+                st.markdown(f"**{emp}**" + (f" — {persona} ({row.get('cargo_contacto', '')})" if persona else ""))
+                for label, key in [("Qué hacen en digital", "que_hacen_digital"),
+                                   ("Perfiles que buscan", "perfiles_buscan"),
+                                   ("Habilidades técnicas", "habilidades_tecnicas"),
+                                   ("Competencias blandas", "competencias_blandas"),
+                                   ("Gap universidad", "gap_universidad"),
+                                   ("Consejo", "consejo")]:
+                    val = row.get(key, "")
+                    if val:
+                        st.markdown(f'<div class="saved-response"><strong>{label}:</strong> {val}</div>', unsafe_allow_html=True)
                 st.markdown("---")
 
     with st.expander("Tu elevator pitch — recuerda la estructura", expanded=False):
@@ -677,48 +687,94 @@ def render_fase3():
             empresa = st.text_input("Nombre de la empresa:")
 
         if empresa:
+            comps_by_cat = get_competencias_by_category()
+            CAMBIOS = ["Confirmada — sigue siendo la más relevante", "Cambiada — ahora elegiría otra", "Nivel ajustado"]
+
+            # Get v1 selections for this empresa
+            v1_by_cat = {}  # {cat_key: {"codigo": ..., "nivel": ..., "justificacion": ...}}
             if my_f1 is not None and not my_f1.empty and "empresa_nombre" in my_f1.columns:
                 v1_data = my_f1[my_f1["empresa_nombre"] == empresa]
                 if not v1_data.empty and "competencia_codigo" in v1_data.columns:
-                    st.markdown("**Tu análisis v1 (pre-evento) para esta empresa:**")
                     for _, row in v1_data.iterrows():
-                        code = row.get("competencia_codigo", "")
-                        nivel = row.get("competencia_nivel", "")
-                        justif = row.get("competencia_justificacion", "")
-                        desc = all_comps.get(code, "")
-                        st.markdown(f"- **{code}** — {desc} ({nivel})")
-                        if justif:
-                            st.caption(f"   Tu justificación: {justif}")
-                    st.divider()
+                        code = str(row.get("competencia_codigo", ""))
+                        for cat_key in CATEGORIAS:
+                            if code.startswith(cat_key):
+                                v1_by_cat[cat_key] = {
+                                    "codigo": code,
+                                    "nivel": row.get("competencia_nivel", ""),
+                                    "justificacion": row.get("competencia_justificacion", ""),
+                                }
+                                break
 
-            st.markdown("**Actualiza tu mapeo de competencias con lo que aprendiste:**")
-            st.markdown("Selecciona la competencia **más relevante** de cada categoría tras tu experiencia en el evento.")
-            CAMBIOS = ["Nueva (no estaba en v1)", "Confirmada", "Eliminada", "Nivel ajustado"]
-            comps_by_cat = get_competencias_by_category()
+            # Show context message
+            if v1_by_cat:
+                st.info(
+                    f"En la **Fase 1**, indicaste estas competencias como las más relevantes para **{empresa}**. "
+                    "Después de hablar con ellos, revisa tu selección: si crees que siguen siendo las más "
+                    "relevantes, explica por qué. Si quieres cambiar alguna, selecciona otra y explica la razón."
+                )
+            else:
+                st.info(
+                    f"No tienes un análisis previo de **{empresa}** en la Fase 1. "
+                    "Selecciona las competencias que consideras más relevantes tras tu conversación con ellos."
+                )
 
             with st.form(f"fase3_comp_{empresa}"):
                 comp_v2 = []
                 for cat_key, cat in comps_by_cat.items():
                     st.markdown(f"**{cat['label']}**")
                     options_list = list(cat["items"].keys())
+
+                    # Determine default selection from v1
+                    v1_info = v1_by_cat.get(cat_key)
+                    if v1_info and v1_info["codigo"] in options_list:
+                        default_idx = options_list.index(v1_info["codigo"]) + 1  # +1 because of "(Ninguna)"
+                        v1_desc = all_comps.get(v1_info["codigo"], "")
+                        st.caption(
+                            f"Fase 1: elegiste **{v1_info['codigo']}** — {v1_desc[:60]}... "
+                            f"(Nivel: {v1_info['nivel']})"
+                        )
+                        if v1_info["justificacion"]:
+                            st.caption(f"Tu justificación: *{v1_info['justificacion']}*")
+                    else:
+                        default_idx = 0
+
                     selected = st.selectbox(
-                        f"Selecciona la más relevante:",
+                        f"Competencia más relevante:",
                         options=["(Ninguna)"] + options_list,
+                        index=default_idx,
                         format_func=lambda x, c=cat: "(Ninguna)" if x == "(Ninguna)" else f"{x} — {c['items'].get(x, '')[:50]}...",
                         key=f"f3sel_{empresa}_{cat_key}"
                     )
                     if selected != "(Ninguna)":
+                        # Determine if changed vs v1
+                        if v1_info and v1_info["codigo"] == selected:
+                            default_cambio = 0  # Confirmada
+                        elif v1_info:
+                            default_cambio = 1  # Cambiada
+                        else:
+                            default_cambio = 0
+
                         c1, c2, c3 = st.columns([3, 1, 1])
                         with c1:
-                            just = st.text_input("Justificación actualizada", key=f"f3j_{empresa}_{selected}")
+                            placeholder = "Explica por qué la confirmas o la cambias"
+                            just = st.text_input("Justificación", key=f"f3j_{empresa}_{selected}",
+                                                 placeholder=placeholder)
                         with c2:
-                            niv = st.selectbox("Nivel", NIVELES, key=f"f3n_{empresa}_{selected}")
+                            # Default nivel from v1 if same competencia
+                            niv_default = 0
+                            if v1_info and v1_info["codigo"] == selected and v1_info["nivel"] in NIVELES:
+                                niv_default = NIVELES.index(v1_info["nivel"])
+                            niv = st.selectbox("Nivel", NIVELES, index=niv_default,
+                                               key=f"f3n_{empresa}_{selected}")
                         with c3:
-                            cambio = st.selectbox("¿Cambió?", CAMBIOS, key=f"f3c_{empresa}_{selected}")
+                            cambio = st.selectbox("¿Cambió?", CAMBIOS, index=default_cambio,
+                                                  key=f"f3c_{empresa}_{selected}")
                         comp_v2.append({
                             "codigo": selected, "tipo": get_competencia_type(selected),
                             "justificacion_v2": just, "nivel_v2": niv, "cambio_vs_v1": cambio,
                         })
+
                 if st.form_submit_button("Guardar competencias v2", type="primary", use_container_width=True):
                     if comp_v2:
                         try:
@@ -775,7 +831,20 @@ def render_student_home():
     st.markdown(f"### Hola, {st.session_state.student_name}")
     st.caption(f"@{st.session_state.student_user} · Grupo {st.session_state.student_group}")
 
-    st.markdown("Selecciona la fase en la que quieres trabajar desde el **menú lateral**.")
+    st.markdown("""
+    Bienvenido/a a **Skills Map**, la herramienta del **Tech Connect 2026**.
+
+    El Tech Connect es una actividad de networking profesional del Grado en Comunicación Digital 
+    donde vas a hablar directamente con empresas del sector. Skills Map te acompaña en tres fases: 
+    antes, durante y después del evento, para que saques el máximo partido a la experiencia.
+
+    Tu objetivo es **conectar las competencias que estás adquiriendo en el Grado con lo que las 
+    empresas buscan de verdad**. Al final del proceso tendrás un mapa personal de competencias 
+    y un plan de acción para tu desarrollo profesional.
+    """)
+
+    st.divider()
+    st.markdown("Selecciona la fase en la que quieres trabajar:")
 
     col1, col2, col3 = st.columns(3)
     with col1:
@@ -807,6 +876,86 @@ def render_student_home():
         Sala de las Palmeras, Biblioteca · Campus de Fuenlabrada · URJC
     </div>
     """, unsafe_allow_html=True)
+
+
+# ============================================
+# HELP PAGE
+# ============================================
+def render_help():
+    st.markdown(logo_html(width=150, center=False, margin_bottom="0.5rem"), unsafe_allow_html=True)
+    st.title("Ayuda — Cómo funciona Skills Map")
+
+    st.markdown("""
+    Skills Map te guía en tres fases a lo largo del Tech Connect 2026. 
+    Cada fase tiene un momento y un objetivo distinto.
+    """)
+
+    st.divider()
+
+    st.markdown("### Fase 1 — Pre-evento")
+    st.markdown("""
+    **Cuándo:** antes del Tech Connect (desde casa o en clase).
+
+    **Qué haces:**
+    - Seleccionas una empresa de las que asistirán al evento.
+    - Investigas su actividad, presencia digital y perfiles que podrían necesitar.
+    - Mapeas las competencias del Grado que consideras más relevantes para trabajar con esa empresa: 
+      una competencia transversal, una de conocimiento teórico y una de habilidad práctica.
+    - Justificas brevemente cada elección.
+
+    **Para qué sirve:** llegarás al evento habiendo hecho los deberes. Podrás hablar con las empresas 
+    con criterio y demostrar que te has preparado.
+
+    **Puedes repetirlo** con varias empresas si quieres.
+    """)
+
+    st.divider()
+
+    st.markdown("### Fase 2 — Durante el evento")
+    st.markdown("""
+    **Cuándo:** el día del Tech Connect, justo después de hablar con cada empresa.
+
+    **Qué haces:**
+    - Registras la conversación que acabas de tener: con quién hablaste, su cargo, 
+      qué hacen en digital, qué perfiles buscan, qué valoran, qué echan en falta de la universidad...
+    - Anotas el consejo que te dieron.
+
+    **Para qué sirve:** capturar la información mientras la tienes fresca. Estos registros 
+    son la base de tu reflexión posterior.
+
+    **Consejo:** no intentes que sea perfecto. Anota lo esencial en 2-3 minutos y pasa a la siguiente empresa.
+    """)
+
+    st.divider()
+
+    st.markdown("### Fase 3 — Post-evento")
+    st.markdown("""
+    **Cuándo:** después del Tech Connect (en clase o desde casa).
+
+    **Qué haces:**
+    - Revisas el mapeo de competencias que hiciste en la Fase 1, ya preseleccionado. 
+      Decides si mantienes tu elección o la cambias tras haber hablado con la empresa.
+    - Justificas tu decisión: ¿se confirmaron tus hipótesis? ¿Descubriste algo que no esperabas?
+    - Completas una reflexión final: competencias más demandadas, gap universidad-empresa, 
+      tu posicionamiento profesional y tu acción principal.
+
+    **Para qué sirve:** cerrar el ciclo. Comparar lo que pensabas antes con lo que aprendiste 
+    y definir un paso concreto para tu desarrollo profesional.
+    """)
+
+    st.divider()
+
+    st.markdown("### Otros")
+    st.markdown("""
+    **Mis respuestas guardadas:** desde el menú lateral puedes consultar en cualquier momento 
+    todo lo que has registrado en las tres fases.
+
+    **¿Puedo volver a una fase anterior?** Sí. Puedes ir y volver entre fases libremente. 
+    Cada vez que guardas un registro, se añade a los anteriores (no se sobrescribe).
+
+    **¿Qué pasa si me equivoco?** Los datos se guardan tal cual los envías. Si necesitas corregir 
+    algo, habla con tu profesor.
+    """)
 
 
 # ============================================
@@ -846,6 +995,8 @@ def main():
         render_fase3()
     elif phase == "my_responses":
         render_my_responses()
+    elif phase == "help":
+        render_help()
     else:
         render_student_home()
 
