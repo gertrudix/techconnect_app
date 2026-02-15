@@ -20,7 +20,7 @@ from dashboard import render_dashboard
 
 
 # ============================================
-# LOGO — base64 for pixel-perfect HTML rendering
+# LOGO
 # ============================================
 LOGO_FILE = "logo-DIGICOM-Lab-negativo-H.png"
 
@@ -40,13 +40,39 @@ def logo_html(width=200, center=True, margin_bottom="1rem"):
 
 
 # ============================================
+# HELPER: get my data filtering by usuario OR nombre (backward compat)
+# ============================================
+def filter_my_data(df):
+    """Filter a DataFrame to get current student's rows, checking 'usuario' first, then 'nombre'."""
+    if df is None or df.empty:
+        return df
+    user = st.session_state.student_user
+    name = st.session_state.student_name
+    if "usuario" in df.columns and user:
+        result = df[df["usuario"].astype(str).str.strip().str.lower() == user.strip().lower()]
+        if not result.empty:
+            return result
+    # Fallback: match by nombre (for data saved before auth system)
+    if "nombre" in df.columns and name:
+        result = df[df["nombre"].astype(str).str.strip().str.lower() == name.strip().lower()]
+        if not result.empty:
+            return result
+    # Fallback: match by estudiante (oldest column name)
+    if "estudiante" in df.columns and name:
+        result = df[df["estudiante"].astype(str).str.strip().str.lower() == name.strip().lower()]
+        if not result.empty:
+            return result
+    return df.iloc[0:0]  # empty
+
+
+# ============================================
 # PAGE CONFIG
 # ============================================
 st.set_page_config(
     page_title="Tech Connect 2026 — Skills Map",
     page_icon="TC",
     layout="wide",
-    initial_sidebar_state="collapsed",
+    initial_sidebar_state="expanded",
 )
 
 st.markdown("""
@@ -81,17 +107,17 @@ st.markdown("""
     .login-hero p { color: rgba(255,255,255,0.65); font-size: 0.95rem; margin: 0; }
 
     /* Sidebar dark */
-    [data-testid="stSidebar"] { background: #1a1a2e; }
+    [data-testid="stSidebar"] { background: #1a1a2e; min-width: 260px; }
     [data-testid="stSidebar"] * { color: #ffffff !important; }
     [data-testid="stSidebar"] .stButton button {
         background: transparent; border: 1px solid rgba(255,255,255,0.2);
-        color: #fff; width: 100%; text-align: left;
+        color: #fff; width: 100%; text-align: left; padding: 0.6rem 1rem;
+        font-size: 0.95rem;
     }
     [data-testid="stSidebar"] .stButton button:hover {
         background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.4);
     }
 
-    /* Saved responses styling */
     .saved-response {
         background: #f0f4f8; border-left: 3px solid #1a1a2e;
         padding: 0.75rem 1rem; margin: 0.5rem 0; border-radius: 0 6px 6px 0;
@@ -179,6 +205,7 @@ def render_student_nav():
         st.caption(f"@{st.session_state.student_user} · Grupo {st.session_state.student_group}")
         st.divider()
 
+        st.markdown("**FASES**")
         if st.button("Fase 1 · Pre-evento", use_container_width=True):
             st.session_state.current_phase = "fase1"
             st.rerun()
@@ -188,7 +215,9 @@ def render_student_nav():
         if st.button("Fase 3 · Post-evento", use_container_width=True):
             st.session_state.current_phase = "fase3"
             st.rerun()
-        if st.button("Mis respuestas", use_container_width=True):
+
+        st.divider()
+        if st.button("Mis respuestas guardadas", use_container_width=True):
             st.session_state.current_phase = "my_responses"
             st.rerun()
 
@@ -200,40 +229,32 @@ def render_student_nav():
 
 
 # ============================================
-# MY RESPONSES — view all saved data
+# MY RESPONSES
 # ============================================
 def render_my_responses():
     st.title("Mis respuestas guardadas")
     st.caption("Aquí puedes consultar todo lo que has registrado en cada fase.")
 
-    user = st.session_state.student_user
     all_comps = get_competencias_flat()
 
     tab_f1, tab_f2, tab_f3 = st.tabs(["Fase 1 — Pre-evento", "Fase 2 — Durante evento", "Fase 3 — Post-evento"])
 
     # ---- FASE 1 ----
     with tab_f1:
-        df_f1 = get_fase1_data()
-        if not df_f1.empty and "usuario" in df_f1.columns:
-            my_f1 = df_f1[df_f1["usuario"] == user]
-        else:
-            my_f1 = None
+        my_f1 = filter_my_data(get_fase1_data())
 
         if my_f1 is not None and not my_f1.empty:
             empresas = my_f1["empresa_nombre"].unique().tolist() if "empresa_nombre" in my_f1.columns else []
             for emp in empresas:
                 st.subheader(emp)
                 emp_data = my_f1[my_f1["empresa_nombre"] == emp]
-                # Show analysis fields (same for all rows of this empresa)
                 first = emp_data.iloc[0]
-                if "actividad_principal" in first and first["actividad_principal"]:
-                    st.markdown(f'<div class="saved-response"><strong>Actividad principal:</strong> {first["actividad_principal"]}</div>', unsafe_allow_html=True)
-                if "presencia_digital" in first and first["presencia_digital"]:
-                    st.markdown(f'<div class="saved-response"><strong>Presencia digital:</strong> {first["presencia_digital"]}</div>', unsafe_allow_html=True)
-                if "perfiles_necesitan" in first and first["perfiles_necesitan"]:
-                    st.markdown(f'<div class="saved-response"><strong>Perfiles que necesitan:</strong> {first["perfiles_necesitan"]}</div>', unsafe_allow_html=True)
-
-                # Competencias
+                for label, key in [("Actividad principal", "actividad_principal"),
+                                   ("Presencia digital", "presencia_digital"),
+                                   ("Perfiles que necesitan", "perfiles_necesitan")]:
+                    val = first.get(key, "")
+                    if val:
+                        st.markdown(f'<div class="saved-response"><strong>{label}:</strong> {val}</div>', unsafe_allow_html=True)
                 if "competencia_codigo" in emp_data.columns:
                     st.markdown("**Competencias mapeadas (v1):**")
                     for _, row in emp_data.iterrows():
@@ -250,31 +271,20 @@ def render_my_responses():
 
     # ---- FASE 2 ----
     with tab_f2:
-        df_f2 = get_fase2_data()
-        if not df_f2.empty and "usuario" in df_f2.columns:
-            my_f2 = df_f2[df_f2["usuario"] == user]
-        else:
-            my_f2 = None
+        my_f2 = filter_my_data(get_fase2_data())
 
         if my_f2 is not None and not my_f2.empty:
-            for i, (_, row) in enumerate(my_f2.iterrows()):
-                emp = row.get("empresa_nombre", f"Registro {i+1}")
+            for _, row in my_f2.iterrows():
+                emp = row.get("empresa_nombre", "Registro")
                 st.subheader(emp)
-                fields = [
-                    ("Persona de contacto", "persona_contacto"),
-                    ("Cargo", "cargo_contacto"),
-                    ("LinkedIn / email", "contacto_linkedin"),
-                    ("Qué hacen en digital", "que_hacen_digital"),
-                    ("Perfiles que buscan", "perfiles_buscan"),
-                    ("Habilidades técnicas", "habilidades_tecnicas"),
-                    ("Competencias blandas", "competencias_blandas"),
-                    ("Gap universidad", "gap_universidad"),
-                    ("Oportunidades", "oportunidades_practicas"),
-                    ("Consejo", "consejo"),
-                    ("Lo que más sorprendió", "sorpresa"),
-                    ("Elevator pitch usado", "elevator_pitch_usado"),
-                ]
-                for label, key in fields:
+                for label, key in [("Persona de contacto", "persona_contacto"),
+                                   ("Cargo", "cargo_contacto"),
+                                   ("Qué hacen en digital", "que_hacen_digital"),
+                                   ("Perfiles que buscan", "perfiles_buscan"),
+                                   ("Habilidades técnicas", "habilidades_tecnicas"),
+                                   ("Competencias blandas", "competencias_blandas"),
+                                   ("Gap universidad", "gap_universidad"),
+                                   ("Consejo", "consejo")]:
                     val = row.get(key, "")
                     if val:
                         st.markdown(f'<div class="saved-response"><strong>{label}:</strong> {val}</div>', unsafe_allow_html=True)
@@ -284,14 +294,9 @@ def render_my_responses():
 
     # ---- FASE 3 ----
     with tab_f3:
-        df_f3 = get_fase3_data()
-        if not df_f3.empty and "usuario" in df_f3.columns:
-            my_f3 = df_f3[df_f3["usuario"] == user]
-        else:
-            my_f3 = None
+        my_f3 = filter_my_data(get_fase3_data())
 
         if my_f3 is not None and not my_f3.empty:
-            # Competencias v2 (rows with empresa_nombre != REFLEXION_GENERAL)
             comp_rows = my_f3[my_f3["empresa_nombre"] != "REFLEXION_GENERAL"] if "empresa_nombre" in my_f3.columns else None
             if comp_rows is not None and not comp_rows.empty:
                 st.markdown("**Competencias v2 (revisadas):**")
@@ -309,20 +314,15 @@ def render_my_responses():
                             st.caption(f"   {justif} · Nivel: {nivel} · Cambio: {cambio}")
                 st.divider()
 
-            # Reflexion (rows with empresa_nombre == REFLEXION_GENERAL)
             ref_rows = my_f3[my_f3["empresa_nombre"] == "REFLEXION_GENERAL"] if "empresa_nombre" in my_f3.columns else None
             if ref_rows is not None and not ref_rows.empty:
                 st.markdown("**Reflexión final:**")
                 last_ref = ref_rows.iloc[-1]
-                ref_fields = [
-                    ("Competencias más demandadas", "competencias_mas_demandadas"),
-                    ("Competencias sorpresa", "competencias_sorpresa"),
-                    ("Gap universidad-empresa", "gap_uni_empresa"),
-                    ("Posicionamiento personal", "posicionamiento_personal"),
-                    ("Plan de acción", "plan_accion"),
-                    ("Valoración de la experiencia", "valoracion_experiencia"),
-                ]
-                for label, key in ref_fields:
+                for label, key in [("Competencias más demandadas", "competencias_mas_demandadas"),
+                                   ("Gap universidad-empresa", "gap_uni_empresa"),
+                                   ("Posicionamiento personal", "posicionamiento_personal"),
+                                   ("Plan de acción", "plan_accion"),
+                                   ("Valoración", "valoracion_experiencia")]:
                     val = last_ref.get(key, "")
                     if val:
                         st.markdown(f'<div class="saved-response"><strong>{label}:</strong> {val}</div>', unsafe_allow_html=True)
@@ -341,26 +341,22 @@ def render_fase1():
         "qué presencia digital tienen y qué competencias del Grado serían relevantes para trabajar con ellas."
     )
 
-    # Show previously saved analyses
-    user = st.session_state.student_user
-    df_f1 = get_fase1_data()
-    if not df_f1.empty and "usuario" in df_f1.columns:
-        my_f1 = df_f1[df_f1["usuario"] == user]
-        if not my_f1.empty and "empresa_nombre" in my_f1.columns:
-            saved_empresas = my_f1["empresa_nombre"].unique().tolist()
-            if saved_empresas:
-                with st.expander(f"Ya has analizado {len(saved_empresas)} empresa(s) — ver resumen"):
-                    all_comps = get_competencias_flat()
-                    for emp in saved_empresas:
-                        emp_data = my_f1[my_f1["empresa_nombre"] == emp]
-                        first = emp_data.iloc[0]
-                        st.markdown(f"**{emp}**")
-                        if "actividad_principal" in first and first["actividad_principal"]:
-                            st.caption(f"Actividad: {str(first['actividad_principal'])[:100]}...")
-                        if "competencia_codigo" in emp_data.columns:
-                            codes = emp_data["competencia_codigo"].tolist()
-                            st.caption(f"Competencias: {', '.join(codes)}")
-                        st.markdown("---")
+    my_f1 = filter_my_data(get_fase1_data())
+    if my_f1 is not None and not my_f1.empty and "empresa_nombre" in my_f1.columns:
+        saved_empresas = my_f1["empresa_nombre"].unique().tolist()
+        if saved_empresas:
+            all_comps = get_competencias_flat()
+            with st.expander(f"Ya has analizado {len(saved_empresas)} empresa(s) — ver resumen"):
+                for emp in saved_empresas:
+                    emp_data = my_f1[my_f1["empresa_nombre"] == emp]
+                    first = emp_data.iloc[0]
+                    st.markdown(f"**{emp}**")
+                    if "actividad_principal" in first and first["actividad_principal"]:
+                        st.caption(f"Actividad: {str(first['actividad_principal'])[:100]}...")
+                    if "competencia_codigo" in emp_data.columns:
+                        codes = emp_data["competencia_codigo"].tolist()
+                        st.caption(f"Competencias: {', '.join(str(c) for c in codes)}")
+                    st.markdown("---")
 
     st.divider()
 
@@ -398,10 +394,11 @@ def render_fase1():
         st.markdown("Selecciona las competencias del Grado más relevantes para trabajar en esta empresa.")
 
         all_comps = get_competencias_flat()
+        comps_by_cat = get_competencias_by_category()
 
-        with st.expander("Ver catálogo completo de competencias"):
-            for cat_key, cat in get_competencias_by_category().items():
-                st.markdown(f"**{cat['label']}**")
+        # FIX 3: Three separate expanders for competencia categories
+        for cat_key, cat in comps_by_cat.items():
+            with st.expander(f"{cat['label']}"):
                 for code, desc in cat["items"].items():
                     st.markdown(f"- `{code}` — {desc}")
 
@@ -453,22 +450,27 @@ def render_fase2():
     st.markdown('<span class="phase-tag phase-live">Fase 2 · Durante el evento</span>', unsafe_allow_html=True)
     st.title("Registro durante el evento")
 
-    # Show previously saved conversations
-    user = st.session_state.student_user
-    df_f2 = get_fase2_data()
-    if not df_f2.empty and "usuario" in df_f2.columns:
-        my_f2 = df_f2[df_f2["usuario"] == user]
-        if not my_f2.empty:
-            n = len(my_f2)
-            empresas_list = my_f2["empresa_nombre"].tolist() if "empresa_nombre" in my_f2.columns else []
-            with st.expander(f"Ya has registrado {n} conversación(es) — ver resumen"):
-                for i, (_, row) in enumerate(my_f2.iterrows()):
-                    emp = row.get("empresa_nombre", "")
-                    persona = row.get("persona_contacto", "")
-                    st.markdown(f"**{emp}**" + (f" — {persona}" if persona else ""))
-                    if row.get("que_hacen_digital", ""):
-                        st.caption(f"Digital: {str(row['que_hacen_digital'])[:80]}...")
-                    st.markdown("---")
+    # Check if Fase 1 was completed
+    my_f1 = filter_my_data(get_fase1_data())
+    if my_f1 is None or my_f1.empty:
+        st.warning(
+            "Aún no has completado la **Fase 1 (Pre-evento)**. "
+            "Te recomendamos investigar las empresas y mapear competencias antes del evento "
+            "para que tu experiencia en el Tech Connect sea mucho más valiosa. "
+            "Puedes continuar igualmente, pero el resultado será más rico si completas la Fase 1 primero."
+        )
+
+    my_f2 = filter_my_data(get_fase2_data())
+    if my_f2 is not None and not my_f2.empty:
+        n = len(my_f2)
+        with st.expander(f"Ya has registrado {n} conversación(es) — ver resumen"):
+            for _, row in my_f2.iterrows():
+                emp = row.get("empresa_nombre", "")
+                persona = row.get("persona_contacto", "")
+                st.markdown(f"**{emp}**" + (f" — {persona}" if persona else ""))
+                if row.get("que_hacen_digital", ""):
+                    st.caption(f"Digital: {str(row['que_hacen_digital'])[:80]}...")
+                st.markdown("---")
 
     with st.expander("Tu elevator pitch — recuerda la estructura", expanded=False):
         st.markdown("""
@@ -511,17 +513,15 @@ def render_fase2():
             empresa_nombre = st.selectbox("Empresa con la que has hablado:",
                                           ["(Otra no listada)"] + empresa_options)
             if empresa_nombre == "(Otra no listada)":
-                empresa_nombre = st.text_input("Nombre de la empresa:")
+                empresa_nombre = st.text_input("Nombre:")
         else:
-            empresa_nombre = st.text_input("Nombre de la empresa:")
+            empresa_nombre = st.text_input("Empresa con la que has hablado:")
 
         col1, col2 = st.columns(2)
         with col1:
             persona = st.text_input("Persona con la que hablaste")
-            cargo = st.text_input("Su cargo / rol")
         with col2:
-            contacto = st.text_input("LinkedIn o email de contacto")
-            pitch = st.selectbox("¿Usaste tu elevator pitch?", ["Sí", "No", "Parcialmente"])
+            cargo = st.text_input("Su cargo / rol")
 
         st.divider()
         st.markdown("**Notas de la conversación**")
@@ -535,22 +535,20 @@ def render_fase2():
         with col2:
             hab_blandas = st.text_area("Competencias blandas clave", height=80)
         gap = st.text_area("Lo que echan en falta de la universidad", height=80)
-        oportunidades = st.text_area("Oportunidades (prácticas, entrada...)", height=60)
         consejo = st.text_area("Consejo que te dieron", height=60)
-        sorpresa = st.text_area("Lo que más te sorprendió o no esperabas", height=80)
 
         submitted = st.form_submit_button("Guardar registro", type="primary", use_container_width=True)
         if submitted:
-            if not empresa_nombre:
+            if not empresa_nombre or empresa_nombre == "(Otra no listada)":
                 st.warning("Indica con qué empresa hablaste.")
             else:
                 registro = {
                     "empresa_nombre": empresa_nombre, "persona_contacto": persona,
-                    "cargo_contacto": cargo, "contacto_linkedin": contacto,
+                    "cargo_contacto": cargo, "contacto_linkedin": "",
                     "que_hacen_digital": que_hacen, "perfiles_buscan": perfiles,
                     "habilidades_tecnicas": hab_tecnicas, "competencias_blandas": hab_blandas,
-                    "gap_universidad": gap, "oportunidades_practicas": oportunidades,
-                    "consejo": consejo, "sorpresa": sorpresa, "elevator_pitch_usado": pitch,
+                    "gap_universidad": gap, "oportunidades_practicas": "",
+                    "consejo": consejo, "sorpresa": "", "elevator_pitch_usado": "",
                 }
                 try:
                     save_fase2(st.session_state.student_user, st.session_state.student_name,
@@ -566,61 +564,83 @@ def render_fase2():
 def render_fase3():
     st.markdown('<span class="phase-tag phase-post">Fase 3 · Post-evento</span>', unsafe_allow_html=True)
     st.title("Mapa de competencias revisado y reflexión")
+
+    # Check if previous phases were completed
+    my_f1_check = filter_my_data(get_fase1_data())
+    my_f2_check = filter_my_data(get_fase2_data())
+    f1_done = my_f1_check is not None and not my_f1_check.empty
+    f2_done = my_f2_check is not None and not my_f2_check.empty
+
+    if not f1_done and not f2_done:
+        st.warning(
+            "No has completado la **Fase 1 (Pre-evento)** ni la **Fase 2 (Durante evento)**. "
+            "La reflexión post-evento tiene mucho más sentido si antes has investigado las empresas "
+            "y registrado tus conversaciones. Puedes continuar, pero te recomendamos completar "
+            "las fases anteriores primero."
+        )
+    elif not f1_done:
+        st.warning(
+            "No has completado la **Fase 1 (Pre-evento)**. "
+            "Sin tu análisis previo de empresas y competencias, no podrás comparar "
+            "tus hipótesis con lo que descubriste en el evento. Te recomendamos completarla."
+        )
+    elif not f2_done:
+        st.warning(
+            "No has completado la **Fase 2 (Durante evento)**. "
+            "Sin tus registros de conversaciones con las empresas, la reflexión será menos completa. "
+            "Te recomendamos registrar al menos una conversación antes de hacer la reflexión."
+        )
+
     st.markdown(
         "Ahora que has hablado con profesionales reales, revisa tu análisis inicial. "
         "¿Se confirmaron tus hipótesis? ¿Descubriste algo nuevo?"
     )
 
-    user = st.session_state.student_user
     all_comps = get_competencias_flat()
-
-    # Show full Fase 1 analysis for reference
     df_f1 = get_fase1_data()
-    if not df_f1.empty and "usuario" in df_f1.columns:
-        my_f1 = df_f1[df_f1["usuario"] == user]
-        if not my_f1.empty:
-            with st.expander("Consultar tu análisis de Fase 1 (pre-evento)"):
-                for emp in my_f1["empresa_nombre"].unique() if "empresa_nombre" in my_f1.columns else []:
-                    emp_data = my_f1[my_f1["empresa_nombre"] == emp]
-                    first = emp_data.iloc[0]
-                    st.markdown(f"**{emp}**")
-                    if "actividad_principal" in first and first["actividad_principal"]:
-                        st.markdown(f'<div class="saved-response"><strong>Actividad:</strong> {first["actividad_principal"]}</div>', unsafe_allow_html=True)
-                    if "presencia_digital" in first and first["presencia_digital"]:
-                        st.markdown(f'<div class="saved-response"><strong>Presencia digital:</strong> {first["presencia_digital"]}</div>', unsafe_allow_html=True)
-                    if "perfiles_necesitan" in first and first["perfiles_necesitan"]:
-                        st.markdown(f'<div class="saved-response"><strong>Perfiles:</strong> {first["perfiles_necesitan"]}</div>', unsafe_allow_html=True)
-                    if "competencia_codigo" in emp_data.columns:
-                        for _, row in emp_data.iterrows():
-                            code = row.get("competencia_codigo", "")
-                            nivel = row.get("competencia_nivel", "")
-                            justif = row.get("competencia_justificacion", "")
-                            desc = all_comps.get(code, "")
-                            st.markdown(f"- **{code}** ({nivel}): {desc}")
-                            if justif:
-                                st.caption(f"   Tu justificación: {justif}")
-                    st.markdown("---")
+    my_f1 = filter_my_data(df_f1)
 
-    # Show Fase 2 conversations for reference
-    df_f2 = get_fase2_data()
-    if not df_f2.empty and "usuario" in df_f2.columns:
-        my_f2 = df_f2[df_f2["usuario"] == user]
-        if not my_f2.empty:
-            with st.expander("Consultar tus conversaciones de Fase 2 (durante evento)"):
-                for _, row in my_f2.iterrows():
-                    emp = row.get("empresa_nombre", "")
-                    st.markdown(f"**{emp}**")
-                    for label, key in [("Qué hacen en digital", "que_hacen_digital"),
-                                       ("Perfiles que buscan", "perfiles_buscan"),
-                                       ("Habilidades técnicas", "habilidades_tecnicas"),
-                                       ("Competencias blandas", "competencias_blandas"),
-                                       ("Gap universidad", "gap_universidad"),
-                                       ("Consejo", "consejo"),
-                                       ("Sorpresa", "sorpresa")]:
-                        val = row.get(key, "")
-                        if val:
-                            st.markdown(f'<div class="saved-response"><strong>{label}:</strong> {val}</div>', unsafe_allow_html=True)
-                    st.markdown("---")
+    # Reference: Fase 1
+    if my_f1 is not None and not my_f1.empty:
+        with st.expander("Consultar tu análisis de Fase 1 (pre-evento)"):
+            for emp in my_f1["empresa_nombre"].unique() if "empresa_nombre" in my_f1.columns else []:
+                emp_data = my_f1[my_f1["empresa_nombre"] == emp]
+                first = emp_data.iloc[0]
+                st.markdown(f"**{emp}**")
+                for label, key in [("Actividad", "actividad_principal"),
+                                   ("Presencia digital", "presencia_digital"),
+                                   ("Perfiles", "perfiles_necesitan")]:
+                    val = first.get(key, "")
+                    if val:
+                        st.markdown(f'<div class="saved-response"><strong>{label}:</strong> {val}</div>', unsafe_allow_html=True)
+                if "competencia_codigo" in emp_data.columns:
+                    for _, row in emp_data.iterrows():
+                        code = row.get("competencia_codigo", "")
+                        nivel = row.get("competencia_nivel", "")
+                        justif = row.get("competencia_justificacion", "")
+                        desc = all_comps.get(code, "")
+                        st.markdown(f"- **{code}** — {desc} ({nivel})")
+                        if justif:
+                            st.caption(f"   Tu justificación: {justif}")
+                st.markdown("---")
+
+    # Reference: Fase 2
+    my_f2 = filter_my_data(get_fase2_data())
+    if my_f2 is not None and not my_f2.empty:
+        with st.expander("Consultar tus conversaciones de Fase 2 (durante evento)"):
+            for _, row in my_f2.iterrows():
+                emp = row.get("empresa_nombre", "")
+                st.markdown(f"**{emp}**")
+                for label, key in [("Qué hacen en digital", "que_hacen_digital"),
+                                   ("Perfiles que buscan", "perfiles_buscan"),
+                                   ("Habilidades técnicas", "habilidades_tecnicas"),
+                                   ("Competencias blandas", "competencias_blandas"),
+                                   ("Gap universidad", "gap_universidad"),
+                                   ("Consejo", "consejo")]:
+                    val = row.get(key, "")
+                    if val:
+                        st.markdown(f'<div class="saved-response"><strong>{label}:</strong> {val}</div>', unsafe_allow_html=True)
+                st.markdown("---")
 
     st.divider()
 
@@ -629,12 +649,7 @@ def render_fase3():
     with tab_comp:
         st.subheader("Mapa de competencias revisado")
 
-        if not df_f1.empty and "usuario" in df_f1.columns:
-            student_f1 = df_f1[df_f1["usuario"] == user]
-            empresas_analizadas = student_f1["empresa_nombre"].unique().tolist() if not student_f1.empty and "empresa_nombre" in student_f1.columns else []
-        else:
-            empresas_analizadas = []
-
+        empresas_analizadas = my_f1["empresa_nombre"].unique().tolist() if my_f1 is not None and not my_f1.empty and "empresa_nombre" in my_f1.columns else []
         empresas_all = get_empresas()
         empresa_options = [e["nombre"] for e in empresas_all] if empresas_all else []
         all_options = list(set(empresas_analizadas + empresa_options))
@@ -645,9 +660,8 @@ def render_fase3():
             empresa = st.text_input("Nombre de la empresa:")
 
         if empresa:
-            # Show v1 competencias for this specific empresa
-            if not df_f1.empty and "usuario" in df_f1.columns:
-                v1_data = df_f1[(df_f1["usuario"] == user) & (df_f1["empresa_nombre"] == empresa)]
+            if my_f1 is not None and not my_f1.empty and "empresa_nombre" in my_f1.columns:
+                v1_data = my_f1[my_f1["empresa_nombre"] == empresa]
                 if not v1_data.empty and "competencia_codigo" in v1_data.columns:
                     st.markdown("**Tu análisis v1 (pre-evento) para esta empresa:**")
                     for _, row in v1_data.iterrows():
@@ -697,29 +711,28 @@ def render_fase3():
         st.subheader("Reflexión final")
         with st.form("fase3_reflexion"):
             st.markdown("**Competencias más demandadas**")
-            comp_demandadas = st.text_area("¿Qué competencias aparecieron como relevantes en la mayoría de empresas?", height=120)
-            st.markdown("**Competencias sorpresa**")
-            comp_sorpresa = st.text_area("¿Alguna que no tenías en tu radar?", height=120)
+            comp_demandadas = st.text_area("¿Qué competencias aparecieron como relevantes en la mayoría de empresas? ¿Hay un patrón?", height=120)
+
             st.markdown("**El gap universidad-empresa**")
             gap_text = st.text_area("¿Dónde ves el mayor desajuste entre lo que se enseña y lo que se necesita?", height=120)
+
             st.divider()
             st.markdown("**Tu posicionamiento profesional**")
             posicionamiento = st.text_area("¿Cómo definirías tu perfil? ¿Hacia qué tipo de empresa o rol te orientas?", height=120)
-            st.markdown("**Tu plan de acción — 3 acciones concretas**")
-            accion1 = st.text_input("Acción 1:")
-            accion2 = st.text_input("Acción 2:")
-            accion3 = st.text_input("Acción 3:")
+
+            st.markdown("**Tu acción principal**")
+            accion = st.text_input("¿Cuál es la acción más importante que vas a llevar a cabo tras el Tech Connect?")
+
             st.markdown("**Valoración de la experiencia**")
             valoracion = st.text_area("¿Qué ha sido lo más valioso? ¿Qué harías diferente?", height=100)
 
             if st.form_submit_button("Guardar reflexión final", type="primary", use_container_width=True):
-                plan = f"1. {accion1} | 2. {accion2} | 3. {accion3}"
                 reflexion = {
                     "competencias_mas_demandadas": comp_demandadas,
-                    "competencias_sorpresa": comp_sorpresa,
+                    "competencias_sorpresa": "",
                     "gap_uni_empresa": gap_text,
                     "posicionamiento_personal": posicionamiento,
-                    "plan_accion": plan,
+                    "plan_accion": accion,
                     "valoracion_experiencia": valoracion,
                 }
                 try:
@@ -738,7 +751,7 @@ def render_student_home():
     st.markdown(f"### Hola, {st.session_state.student_name}")
     st.caption(f"@{st.session_state.student_user} · Grupo {st.session_state.student_group}")
 
-    st.markdown("Selecciona la fase en la que quieres trabajar:")
+    st.markdown("Selecciona la fase en la que quieres trabajar desde el **menú lateral**.")
 
     col1, col2, col3 = st.columns(3)
     with col1:
