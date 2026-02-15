@@ -894,9 +894,9 @@ class SkillsMapPDF:
                 self.set_y(5)
                 self.set_font(_font[0], "B", 10)
                 self.set_text_color(*WHITE)
-                self.cell(0, 5, "TECH CONNECT 2026 - Skills Map", align="C", ln=True)
+                self.cell(0, 5, "TECH CONNECT 2026 — Skills Map", align="C", ln=True)
                 self.set_font(_font[0], "", 7)
-                self.cell(0, 4, "DIGICOM Lab - Grado en Comunicacion Digital - URJC", align="C", ln=True)
+                self.cell(0, 4, "DIGICOM Lab · Grado en Comunicación Digital · URJC", align="C", ln=True)
                 self.set_y(26)
                 self.set_text_color(0, 0, 0)
 
@@ -908,19 +908,38 @@ class SkillsMapPDF:
                 self.set_font(_font[0], "", 6.5)
                 self.set_text_color(120, 120, 120)
                 self.cell(0, 4,
-                    "2026 - Grado en Comunicacion Digital (URJC) | Diseno y desarrollo: Grupo Ciberimaginario",
+                    "2026 – Grado en Comunicación Digital (URJC) | Diseño y desarrollo: Grupo Ciberimaginario",
                     align="C", ln=True)
                 self.set_font(_font[0], "", 6)
-                self.cell(0, 4, f"Pagina {self.page_no()}/{{nb}}", align="C")
+                self.cell(0, 4, f"Página {self.page_no()}/{{nb}}", align="C")
 
         self.pdf = PDF()
+        # Register Unicode font — look in app dir first, then system
         try:
-            self.pdf.add_font("DejaVu", "", "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf")
-            self.pdf.add_font("DejaVu", "B", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
-            self.pdf.add_font("DejaVu", "I", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Oblique.ttf")
-            self.pdf.add_font("DejaVu", "BI", "/usr/share/fonts/truetype/dejavu/DejaVuSans-BoldOblique.ttf")
-            _font[0] = "DejaVu"
-            self.F = "DejaVu"
+            app_dir = pathlib.Path(__file__).parent
+            font_paths = {
+                "": None, "B": None, "I": None, "BI": None
+            }
+            font_files = {
+                "": "DejaVuSans.ttf", "B": "DejaVuSans-Bold.ttf",
+                "I": "DejaVuSans-Oblique.ttf", "BI": "DejaVuSans-BoldOblique.ttf"
+            }
+            for style, filename in font_files.items():
+                local = app_dir / filename
+                system = pathlib.Path(f"/usr/share/fonts/truetype/dejavu/{filename}")
+                if local.exists() and local.stat().st_size > 100:
+                    font_paths[style] = str(local)
+                elif system.exists() and system.stat().st_size > 100:
+                    font_paths[style] = str(system)
+
+            if font_paths[""]:
+                for style, path in font_paths.items():
+                    if path:
+                        self.pdf.add_font("DejaVu", style, path)
+                _font[0] = "DejaVu"
+                self.F = "DejaVu"
+            else:
+                self.F = "Helvetica"
         except Exception:
             self.F = "Helvetica"
         self.pdf.alias_nb_pages()
@@ -978,7 +997,7 @@ class SkillsMapPDF:
         self.pdf.cell(0, 5, label + ":", ln=True)
         self.pdf.set_font(self.F, "", 8.5)
         self.pdf.set_text_color(60, 60, 60)
-        self.pdf.multi_cell(0, 4.5, "  " + str(value))
+        self.pdf.multi_cell(190, 4.5, "  " + str(value))
         self.pdf.ln(1.5)
 
     def competencia(self, code, desc, extra=""):
@@ -988,10 +1007,10 @@ class SkillsMapPDF:
         self.pdf.set_font(self.F, "", 8)
         self.pdf.set_text_color(80, 80, 80)
         if desc:
-            self.pdf.multi_cell(0, 4, f"    {desc}")
+            self.pdf.multi_cell(190, 4, f"    {desc}")
         if extra:
             self.pdf.set_font(self.F, "I", 7.5)
-            self.pdf.multi_cell(0, 4, f"    {extra}")
+            self.pdf.multi_cell(190, 4, f"    {extra}")
         self.pdf.ln(1)
 
     def separator(self):
