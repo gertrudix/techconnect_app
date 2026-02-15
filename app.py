@@ -902,19 +902,19 @@ class SkillsMapPDF:
         logo_dir = pathlib.Path(__file__).parent
         _font = ["Helvetica"]  # mutable default, updated after font registration
 
-        # Pre-process URJC logo: remove black background for dark header
+        # Pre-process URJC logo: replace black bg with header color so it blends
         _urjc_tmp = None
         urjc_src = logo_dir / "logo-urjc.png"
         if urjc_src.exists() and urjc_src.stat().st_size > 100:
             try:
                 from PIL import Image
+                import numpy as np
                 import tempfile
-                im = Image.open(str(urjc_src)).convert("RGBA")
-                pixels = list(im.getdata())
-                new_px = [(0, 0, 0, 0) if (p[0] < 40 and p[1] < 40 and p[2] < 40) else p for p in pixels]
-                im.putdata(new_px)
+                arr = np.array(Image.open(str(urjc_src)).convert("RGB"))
+                black_mask = np.all(arr < 30, axis=2)
+                arr[black_mask] = [26, 26, 46]  # header color
                 tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
-                im.save(tmp.name)
+                Image.fromarray(arr).save(tmp.name)
                 tmp.close()
                 _urjc_tmp = tmp.name
             except Exception:
