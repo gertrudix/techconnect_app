@@ -70,7 +70,7 @@ def filter_my_data(df):
 # ============================================
 st.set_page_config(
     page_title="Tech Connect 2026 — Skills Map",
-    page_icon="TC",
+    page_icon=LOGO_FILE,
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -127,6 +127,19 @@ st.markdown("""
 
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
+    /* Hide GitHub fork ribbon */
+    .stApp [data-testid="stDecoration"] { display: none; }
+    .viewerBadge_container__r5tak { display: none !important; }
+    .stDeployButton { display: none !important; }
+    [data-testid="stToolbar"] { display: none !important; }
+    /* Custom footer */
+    .custom-footer {
+        position: fixed; bottom: 0; left: 0; width: 100%;
+        background: #f8f9fa; border-top: 1px solid #e9ecef;
+        text-align: center; padding: 6px 0; font-size: 0.75rem;
+        color: #999; z-index: 999;
+    }
+    .custom-footer a { color: #1a1a2e; text-decoration: none; font-weight: 500; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -206,6 +219,9 @@ def render_student_nav():
         st.divider()
 
         st.markdown("**FASES**")
+        if st.button("Inicio", use_container_width=True):
+            st.session_state.current_phase = None
+            st.rerun()
         if st.button("Fase 1 · Pre-evento", use_container_width=True):
             st.session_state.current_phase = "fase1"
             st.rerun()
@@ -391,42 +407,43 @@ def render_fase1():
 
         st.divider()
         st.markdown("### Mapeo de competencias v1 (tu hipótesis)")
-        st.markdown("Selecciona las competencias del Grado más relevantes para trabajar en esta empresa.")
+        st.markdown(
+            "Selecciona la competencia **más relevante** de cada categoría para trabajar en esta empresa "
+            "y justifica brevemente tu elección."
+        )
 
         all_comps = get_competencias_flat()
         comps_by_cat = get_competencias_by_category()
 
-        # FIX 3: Three separate expanders for competencia categories
-        for cat_key, cat in comps_by_cat.items():
-            with st.expander(f"{cat['label']}"):
-                for code, desc in cat["items"].items():
-                    st.markdown(f"- `{code}` — {desc}")
-
-        selected_comps = st.multiselect(
-            "Selecciona las competencias relevantes:",
-            options=list(all_comps.keys()),
-            format_func=lambda x: f"{x} — {all_comps[x][:60]}..."
-        )
-
         comp_details = []
-        for comp_code in selected_comps:
-            st.markdown(f"**{comp_code}**: {all_comps[comp_code]}")
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                justif = st.text_input(f"¿Por qué es relevante para {empresa_nombre}?",
-                                       key=f"just_{empresa_id}_{comp_code}")
-            with col2:
-                nivel = st.selectbox("Nivel necesario", NIVELES, key=f"nivel_{empresa_id}_{comp_code}")
-            comp_details.append({
-                "codigo": comp_code, "tipo": get_competencia_type(comp_code),
-                "justificacion": justif, "nivel": nivel,
-            })
+        for cat_key, cat in comps_by_cat.items():
+            st.markdown(f"**{cat['label']}**")
+            options_list = list(cat["items"].keys())
+            selected = st.selectbox(
+                f"Selecciona la más relevante:",
+                options=["(Ninguna)"] + options_list,
+                format_func=lambda x, c=cat: "(Ninguna)" if x == "(Ninguna)" else f"{x} — {c['items'].get(x, '')[:55]}...",
+                key=f"comp_{empresa_id}_{cat_key}"
+            )
+            if selected != "(Ninguna)":
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    justif = st.text_input(
+                        f"¿Por qué es relevante para {empresa_nombre}?",
+                        key=f"just_{empresa_id}_{selected}"
+                    )
+                with col2:
+                    nivel = st.selectbox("Nivel", NIVELES, key=f"nivel_{empresa_id}_{selected}")
+                comp_details.append({
+                    "codigo": selected, "tipo": get_competencia_type(selected),
+                    "justificacion": justif, "nivel": nivel,
+                })
 
         submitted = st.form_submit_button("Guardar análisis", type="primary", use_container_width=True)
         if submitted:
             if not actividad:
                 st.warning("Describe al menos la actividad principal.")
-            elif not selected_comps:
+            elif not comp_details:
                 st.warning("Selecciona al menos una competencia.")
             else:
                 analisis = {
@@ -675,26 +692,33 @@ def render_fase3():
                     st.divider()
 
             st.markdown("**Actualiza tu mapeo de competencias con lo que aprendiste:**")
+            st.markdown("Selecciona la competencia **más relevante** de cada categoría tras tu experiencia en el evento.")
             CAMBIOS = ["Nueva (no estaba en v1)", "Confirmada", "Eliminada", "Nivel ajustado"]
+            comps_by_cat = get_competencias_by_category()
 
             with st.form(f"fase3_comp_{empresa}"):
-                selected = st.multiselect("Competencias relevantes (revisadas):",
-                    options=list(all_comps.keys()),
-                    format_func=lambda x: f"{x} — {all_comps[x][:50]}...")
                 comp_v2 = []
-                for code in selected:
-                    st.markdown(f"**{code}**: {all_comps[code]}")
-                    c1, c2, c3 = st.columns([3, 1, 1])
-                    with c1:
-                        just = st.text_input("Justificación actualizada", key=f"f3j_{empresa}_{code}")
-                    with c2:
-                        niv = st.selectbox("Nivel", NIVELES, key=f"f3n_{empresa}_{code}")
-                    with c3:
-                        cambio = st.selectbox("¿Cambió?", CAMBIOS, key=f"f3c_{empresa}_{code}")
-                    comp_v2.append({
-                        "codigo": code, "tipo": get_competencia_type(code),
-                        "justificacion_v2": just, "nivel_v2": niv, "cambio_vs_v1": cambio,
-                    })
+                for cat_key, cat in comps_by_cat.items():
+                    st.markdown(f"**{cat['label']}**")
+                    options_list = list(cat["items"].keys())
+                    selected = st.selectbox(
+                        f"Selecciona la más relevante:",
+                        options=["(Ninguna)"] + options_list,
+                        format_func=lambda x, c=cat: "(Ninguna)" if x == "(Ninguna)" else f"{x} — {c['items'].get(x, '')[:50]}...",
+                        key=f"f3sel_{empresa}_{cat_key}"
+                    )
+                    if selected != "(Ninguna)":
+                        c1, c2, c3 = st.columns([3, 1, 1])
+                        with c1:
+                            just = st.text_input("Justificación actualizada", key=f"f3j_{empresa}_{selected}")
+                        with c2:
+                            niv = st.selectbox("Nivel", NIVELES, key=f"f3n_{empresa}_{selected}")
+                        with c3:
+                            cambio = st.selectbox("¿Cambió?", CAMBIOS, key=f"f3c_{empresa}_{selected}")
+                        comp_v2.append({
+                            "codigo": selected, "tipo": get_competencia_type(selected),
+                            "justificacion_v2": just, "nivel_v2": niv, "cambio_vs_v1": cambio,
+                        })
                 if st.form_submit_button("Guardar competencias v2", type="primary", use_container_width=True):
                     if comp_v2:
                         try:
@@ -789,6 +813,15 @@ def render_student_home():
 # MAIN
 # ============================================
 def main():
+    # Custom footer
+    st.markdown(
+        '<div class="custom-footer">'
+        '<a href="https://ciberimaginario.es" target="_blank">Ciberimaginario</a>'
+        ' · DIGICOM Lab · URJC'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
     if st.session_state.user_type is None:
         render_login()
         return
