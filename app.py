@@ -906,7 +906,13 @@ class SkillsMapPDF:
             def header(self):
                 self.set_fill_color(*DARK_BLUE)
                 self.rect(0, 0, 210, 22, "F")
+                urjc = logo_dir / "logo-urjc.png"
                 digicom = logo_dir / "logo-DIGICOM-Lab-negativo-H.png"
+                if urjc.exists() and urjc.stat().st_size > 100:
+                    try:
+                        self.image(str(urjc), 10, 4, 16)
+                    except Exception:
+                        pass
                 if digicom.exists() and digicom.stat().st_size > 100:
                     try:
                         self.image(str(digicom), 150, 3, 50)
@@ -968,18 +974,7 @@ class SkillsMapPDF:
 
     def add_cover(self, name, user, group):
         self.pdf.add_page()
-
-        # URJC logo on white background (top of cover)
-        logo_dir = pathlib.Path(__file__).parent
-        urjc = logo_dir / "logo-urjc.png"
-        if urjc.exists() and urjc.stat().st_size > 100:
-            try:
-                self.pdf.image(str(urjc), x=75, y=30, w=60)
-                self.pdf.ln(35)
-            except Exception:
-                self.pdf.ln(20)
-        else:
-            self.pdf.ln(20)
+        self.pdf.ln(20)
         self.pdf.set_font(self.F, "B", 28)
         self.pdf.set_text_color(*DARK_BLUE)
         self.pdf.cell(0, 15, "Skills Map", ln=True, align="C")
