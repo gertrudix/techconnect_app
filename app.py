@@ -286,13 +286,13 @@ def render_my_responses():
     with tab_f2:
         my_f2 = filter_my_data(get_fase2_data())
         if my_f2 is not None and not my_f2.empty:
-            for _, row in my_f2.iterrows():
+            for idx_f2, (_, row) in enumerate(my_f2.iterrows()):
                 emp = row.get("empresa_nombre", "")
                 col_t, col_b = st.columns([4, 1])
                 with col_t:
                     st.subheader(emp)
                 with col_b:
-                    if st.button("Editar", key=f"edit_f2_{emp}", use_container_width=True):
+                    if st.button("Editar", key=f"edit_f2_{idx_f2}_{emp}", use_container_width=True):
                         st.session_state.current_phase = "fase2"
                         st.session_state.edit_empresa = emp
                         st.rerun()
@@ -356,12 +356,12 @@ def render_fase1():
         saved_empresas = my_f1["empresa_nombre"].unique().tolist()
         if saved_empresas:
             with st.expander(f"Ya has analizado {len(saved_empresas)} empresa(s) — ver / editar"):
-                for emp in saved_empresas:
+                for idx_f1, emp in enumerate(saved_empresas):
                     col_t, col_b = st.columns([4, 1])
                     with col_t:
                         st.markdown(f"**{emp}**")
                     with col_b:
-                        if st.button("Editar", key=f"f1_edit_{emp}", use_container_width=True):
+                        if st.button("Editar", key=f"f1_edit_{idx_f1}_{emp}", use_container_width=True):
                             st.session_state.edit_empresa = emp
                             st.rerun()
                     st.markdown("---")
@@ -494,14 +494,14 @@ def render_fase2():
     if my_f2 is not None and not my_f2.empty:
         n = len(my_f2)
         with st.expander(f"Ya has registrado {n} conversación(es) — ver / editar"):
-            for _, row in my_f2.iterrows():
+            for idx, (_, row) in enumerate(my_f2.iterrows()):
                 emp = row.get("empresa_nombre", "")
                 col_t, col_b = st.columns([4, 1])
                 with col_t:
                     persona = row.get("persona_contacto", "")
                     st.markdown(f"**{emp}**" + (f" — {persona}" if persona else ""))
                 with col_b:
-                    if st.button("Editar", key=f"f2_edit_{emp}", use_container_width=True):
+                    if st.button("Editar", key=f"f2_edit_{idx}_{emp}", use_container_width=True):
                         st.session_state.edit_empresa = emp
                         st.rerun()
                 for label, key in [("Digital", "que_hacen_digital"), ("Perfiles", "perfiles_buscan"),
