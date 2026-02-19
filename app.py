@@ -9,7 +9,7 @@ import pathlib
 import streamlit as st
 from competencias import (
     CATEGORIAS, NIVELES, CANALES_DIGITALES,
-    get_competencia_type
+    get_competencia_type, get_competencia_category
 )
 from sheets_backend import (
     authenticate_student, get_empresas, save_fase1, save_fase2,
@@ -408,14 +408,13 @@ def render_fase1():
             if "competencia_codigo" in emp_prev.columns:
                 for _, row in emp_prev.iterrows():
                     code = str(row.get("competencia_codigo", ""))
-                    for ck in CATEGORIAS:
-                        if code.startswith(ck):
-                            prev_comps_by_cat[ck] = {
-                                "codigo": code,
-                                "justificacion": str(row.get("competencia_justificacion", "") or ""),
-                                "nivel": str(row.get("competencia_nivel", "") or ""),
-                            }
-                            break
+                    ck = get_competencia_category(code)
+                    if ck:
+                        prev_comps_by_cat[ck] = {
+                            "codigo": code,
+                            "justificacion": str(row.get("competencia_justificacion", "") or ""),
+                            "nivel": str(row.get("competencia_nivel", "") or ""),
+                        }
             st.info("Ya tienes un análisis guardado. Puedes editarlo y volver a guardar.")
 
     with st.form(f"fase1_{empresa_id}"):
@@ -666,11 +665,10 @@ def render_fase3():
                 if not v1_data.empty and "competencia_codigo" in v1_data.columns:
                     for _, row in v1_data.iterrows():
                         code = str(row.get("competencia_codigo", ""))
-                        for ck in CATEGORIAS:
-                            if code.startswith(ck):
-                                v1_by_cat[ck] = {"codigo": code, "nivel": row.get("competencia_nivel", ""),
-                                                 "justificacion": row.get("competencia_justificacion", "")}
-                                break
+                        ck = get_competencia_category(code)
+                        if ck:
+                            v1_by_cat[ck] = {"codigo": code, "nivel": row.get("competencia_nivel", ""),
+                                             "justificacion": row.get("competencia_justificacion", "")}
 
             if v1_by_cat:
                 st.info(f"En la Fase 1 indicaste estas competencias para **{empresa}**. Confirma o cambia tu selección.")
