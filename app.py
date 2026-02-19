@@ -160,6 +160,28 @@ st.markdown("""
         text-align: center; padding: 6px 0; font-size: 0.75rem; color: #999; z-index: 999;
     }
     .custom-footer a { color: #1a1a2e; text-decoration: none; font-weight: 500; }
+    /* Selectbox dropdown: allow text wrap instead of truncating */
+    [data-baseweb="select"] .css-1dimb5e-singleValue,
+    [data-baseweb="select"] [role="option"],
+    [data-baseweb="menu"] [role="option"],
+    [data-baseweb="popover"] [role="option"],
+    div[data-baseweb="select"] span {
+        white-space: normal !important;
+        overflow: visible !important;
+        text-overflow: unset !important;
+        line-height: 1.4 !important;
+    }
+    /* Make the selected value area taller to show full text */
+    [data-baseweb="select"] > div:first-child {
+        min-height: 2.5rem !important;
+        height: auto !important;
+        padding-top: 4px !important;
+        padding-bottom: 4px !important;
+    }
+    /* Wider dropdown menu */
+    [data-baseweb="popover"] {
+        min-width: 100% !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -443,7 +465,7 @@ def render_fase1():
             didx = (opts.index(prev["codigo"]) + 1) if prev and prev["codigo"] in opts else 0
 
             selected = st.selectbox("Selecciona la más relevante:", ["(Ninguna)"] + opts, index=didx,
-                format_func=lambda x, c=cat: "(Ninguna)" if x == "(Ninguna)" else f"{x} — {c['items'].get(x, '')[:55]}...",
+                format_func=lambda x, c=cat: "(Ninguna)" if x == "(Ninguna)" else f"{x} — {c['items'].get(x, '')}",
                 key=f"comp_{empresa_id}_{cat_key}")
             if selected != "(Ninguna)":
                 pj = prev.get("justificacion", "") if prev and prev["codigo"] == selected else ""
@@ -686,7 +708,7 @@ def render_fase3():
                         st.caption(f"Fase 1: **{v1['codigo']}** ({v1['nivel']})")
 
                     selected = st.selectbox("Competencia más relevante:", ["(Ninguna)"] + opts, index=didx,
-                        format_func=lambda x, c=cat: "(Ninguna)" if x == "(Ninguna)" else f"{x} — {c['items'].get(x, '')[:50]}...",
+                        format_func=lambda x, c=cat: "(Ninguna)" if x == "(Ninguna)" else f"{x} — {c['items'].get(x, '')}",
                         key=f"f3sel_{empresa}_{cat_key}")
                     if selected != "(Ninguna)":
                         dc = 0 if (v1 and v1["codigo"] == selected) else (1 if v1 else 0)
