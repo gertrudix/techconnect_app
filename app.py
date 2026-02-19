@@ -160,28 +160,6 @@ st.markdown("""
         text-align: center; padding: 6px 0; font-size: 0.75rem; color: #999; z-index: 999;
     }
     .custom-footer a { color: #1a1a2e; text-decoration: none; font-weight: 500; }
-    /* Selectbox dropdown: allow text wrap instead of truncating */
-    [data-baseweb="select"] .css-1dimb5e-singleValue,
-    [data-baseweb="select"] [role="option"],
-    [data-baseweb="menu"] [role="option"],
-    [data-baseweb="popover"] [role="option"],
-    div[data-baseweb="select"] span {
-        white-space: normal !important;
-        overflow: visible !important;
-        text-overflow: unset !important;
-        line-height: 1.4 !important;
-    }
-    /* Make the selected value area taller to show full text */
-    [data-baseweb="select"] > div:first-child {
-        min-height: 2.5rem !important;
-        height: auto !important;
-        padding-top: 4px !important;
-        padding-bottom: 4px !important;
-    }
-    /* Wider dropdown menu */
-    [data-baseweb="popover"] {
-        min-width: 100% !important;
-    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -464,10 +442,22 @@ def render_fase1():
             prev = prev_comps_by_cat.get(cat_key)
             didx = (opts.index(prev["codigo"]) + 1) if prev and prev["codigo"] in opts else 0
 
+            # Short labels for dropdown: "C19 — Web y apps interactivas"
+            def _short_label(code, c=cat):
+                if code == "(Ninguna)":
+                    return "(Ninguna)"
+                desc = c["items"].get(code, "")
+                # Truncate at ~45 chars for dropdown readability
+                short = desc if len(desc) <= 50 else desc[:47] + "…"
+                return f"{code} — {short}"
+
             selected = st.selectbox("Selecciona la más relevante:", ["(Ninguna)"] + opts, index=didx,
-                format_func=lambda x, c=cat: "(Ninguna)" if x == "(Ninguna)" else f"{x} — {c['items'].get(x, '')}",
+                format_func=_short_label,
                 key=f"comp_{empresa_id}_{cat_key}")
             if selected != "(Ninguna)":
+                # Show full description below the selectbox
+                full_desc = cat["items"].get(selected, "")
+                st.markdown(f'<div style="background:#f0f4f8;padding:8px 12px;border-radius:6px;margin:-8px 0 8px;font-size:0.9rem;border-left:3px solid {cat["color"]}"><strong>{selected}</strong> — {full_desc}</div>', unsafe_allow_html=True)
                 pj = prev.get("justificacion", "") if prev and prev["codigo"] == selected else ""
                 pn = NIVELES.index(prev["nivel"]) if prev and prev["codigo"] == selected and prev["nivel"] in NIVELES else 0
                 c1, c2 = st.columns([3, 1])
@@ -707,10 +697,19 @@ def render_fase3():
                     if v1 and v1["codigo"] in opts:
                         st.caption(f"Fase 1: **{v1['codigo']}** ({v1['nivel']})")
 
+                    def _short_f3(code, c=cat):
+                        if code == "(Ninguna)":
+                            return "(Ninguna)"
+                        desc = c["items"].get(code, "")
+                        short = desc if len(desc) <= 50 else desc[:47] + "…"
+                        return f"{code} — {short}"
+
                     selected = st.selectbox("Competencia más relevante:", ["(Ninguna)"] + opts, index=didx,
-                        format_func=lambda x, c=cat: "(Ninguna)" if x == "(Ninguna)" else f"{x} — {c['items'].get(x, '')}",
+                        format_func=_short_f3,
                         key=f"f3sel_{empresa}_{cat_key}")
                     if selected != "(Ninguna)":
+                        full_desc = cat["items"].get(selected, "")
+                        st.markdown(f'<div style="background:#f0f4f8;padding:8px 12px;border-radius:6px;margin:-8px 0 8px;font-size:0.9rem;border-left:3px solid {cat["color"]}"><strong>{selected}</strong> — {full_desc}</div>', unsafe_allow_html=True)
                         dc = 0 if (v1 and v1["codigo"] == selected) else (1 if v1 else 0)
                         c1, c2, c3 = st.columns([3, 1, 1])
                         with c1:
