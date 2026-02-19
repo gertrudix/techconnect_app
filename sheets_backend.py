@@ -147,6 +147,17 @@ def init_spreadsheet():
         rows = [[c[0], c[1], c[2]] for c in DEFAULT_COMPETENCIAS]
         if rows:
             ws.append_rows(rows)
+    else:
+        # If sheet exists but is empty (only header or less), repopulate
+        ws = ss.worksheet(SHEET_COMPETENCIAS)
+        all_vals = ws.get_all_values()
+        if len(all_vals) <= 1:
+            # Empty or only header — repopulate
+            ws.clear()
+            ws.append_row(["codigo", "categoria", "descripcion"])
+            rows = [[c[0], c[1], c[2]] for c in DEFAULT_COMPETENCIAS]
+            if rows:
+                ws.append_rows(rows)
 
     if SHEET_EMPRESAS not in existing:
         ws = ss.add_worksheet(title=SHEET_EMPRESAS, rows=50, cols=5)
