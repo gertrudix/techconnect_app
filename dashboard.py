@@ -10,7 +10,7 @@ import plotly.graph_objects as go
 from competencias import CATEGORIAS, get_competencia_category
 from sheets_backend import (
     get_fase1_data, get_fase2_data, get_fase3_data,
-    get_students, get_empresas, init_spreadsheet, add_empresa,
+    get_usuarios as get_students, get_empresas, init_spreadsheet, add_empresa,
     get_competencias, get_competencias_flat, add_competencia, delete_competencia
 )
 
