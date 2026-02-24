@@ -51,13 +51,13 @@ def render_progress_tab():
     with col1:
         st.metric("Estudiantes registrados", total_students)
     with col2:
-        f1_count = df_f1["estudiante"].nunique() if not df_f1.empty else 0
+        f1_count = df_f1["nombre"].nunique() if not df_f1.empty else 0
         st.metric("Fase 1 completada", f1_count)
     with col3:
-        f2_count = df_f2["estudiante"].nunique() if not df_f2.empty else 0
+        f2_count = df_f2["nombre"].nunique() if not df_f2.empty else 0
         st.metric("Fase 2 completada", f2_count)
     with col4:
-        f3_count = df_f3["estudiante"].nunique() if not df_f3.empty else 0
+        f3_count = df_f3["nombre"].nunique() if not df_f3.empty else 0
         st.metric("Fase 3 completada", f3_count)
 
     st.divider()
@@ -72,9 +72,9 @@ def render_progress_tab():
                 grupo_students = df_students[df_students["grupo"] == grupo]["nombre"].tolist()
                 n_total = len(grupo_students)
 
-                n_f1 = df_f1[df_f1["estudiante"].isin(grupo_students)]["estudiante"].nunique() if not df_f1.empty else 0
-                n_f2 = df_f2[df_f2["estudiante"].isin(grupo_students)]["estudiante"].nunique() if not df_f2.empty else 0
-                n_f3 = df_f3[df_f3["estudiante"].isin(grupo_students)]["estudiante"].nunique() if not df_f3.empty else 0
+                n_f1 = df_f1[df_f1["nombre"].isin(grupo_students)]["nombre"].nunique() if not df_f1.empty else 0
+                n_f2 = df_f2[df_f2["nombre"].isin(grupo_students)]["nombre"].nunique() if not df_f2.empty else 0
+                n_f3 = df_f3[df_f3["nombre"].isin(grupo_students)]["nombre"].nunique() if not df_f3.empty else 0
 
                 group_data.append({
                     "Grupo": grupo,
