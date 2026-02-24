@@ -68,7 +68,8 @@ def render_progress_tab():
             st.subheader("Progreso por grupo")
 
             group_data = []
-            for grupo in sorted([g for g in df_students["grupo"].unique() if g and str(g) != "nan"]):
+            df_students["grupo"] = df_students["grupo"].astype(str)
+            for grupo in sorted([g for g in df_students["grupo"].unique() if g not in ("nan", "", "None")]):
                 grupo_students = df_students[df_students["grupo"] == grupo]["nombre"].tolist()
                 n_total = len(grupo_students)
 
